@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,15 +15,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,9 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.payloadtunnel.core.AppLog
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LogScreen(modifier: Modifier) {
+fun LogScreen() {
     val context = LocalContext.current
     val entries by AppLog.entries.collectAsState()
     val listState = rememberLazyListState()
@@ -45,41 +39,39 @@ fun LogScreen(modifier: Modifier) {
         if (entries.isNotEmpty()) listState.animateScrollToItem(entries.size - 1)
     }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopAppBar(
-                title = { Text("Logs") },
-                actions = {
-                    IconButton(onClick = {
-                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        cm.setPrimaryClip(ClipData.newPlainText("Payload Tunnel log", AppLog.asText()))
-                        Toast.makeText(context, "Log copied", Toast.LENGTH_SHORT).show()
-                    }) { Icon(Icons.Filled.ContentCopy, "Copy log") }
-                    IconButton(onClick = { AppLog.clear() }) { Icon(Icons.Filled.DeleteSweep, "Clear log") }
-                },
-            )
-        },
-    ) { padding ->
-        if (entries.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("No log entries yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.fillMaxSize()) {
+        TopBar(
+            "Logs",
+            right = {
+                CircleIconButton(Icons.Outlined.ContentCopy, "Copy log", {
+                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("Payload Tunnel log", AppLog.asText()))
+                    Toast.makeText(context, "Log copied", Toast.LENGTH_SHORT).show()
+                })
+                CircleIconButton(Icons.Outlined.DeleteSweep, "Clear log", { AppLog.clear() })
+            },
+        )
+        GlassCard(Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, bottom = 12.dp), padding = 0.dp) {
+            if (entries.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No log entries yet", color = TextSecondary)
+                }
+                return@GlassCard
             }
-            return@Scaffold
-        }
-        SelectionContainer(Modifier.padding(padding)) {
-            LazyColumn(state = listState, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-                items(entries, key = { it.seq }) { e ->
-                    val color = when (e.level) {
-                        AppLog.Level.ERROR -> MaterialTheme.colorScheme.error
-                        AppLog.Level.WARN -> Working
-                        AppLog.Level.OK -> Connected
-                        AppLog.Level.INFO -> MaterialTheme.colorScheme.onSurface
+            SelectionContainer {
+                LazyColumn(state = listState, contentPadding = PaddingValues(12.dp)) {
+                    items(entries, key = { it.seq }) { e ->
+                        val color = when (e.level) {
+                            AppLog.Level.ERROR -> Failed
+                            AppLog.Level.WARN -> Working
+                            AppLog.Level.OK -> Lime
+                            AppLog.Level.INFO -> TextPrimary
+                        }
+                        Text(
+                            e.format(), color = color, fontFamily = FontFamily.Monospace, fontSize = 11.5.sp,
+                            lineHeight = 16.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        )
                     }
-                    Text(
-                        e.format(), color = color, fontFamily = FontFamily.Monospace, fontSize = 12.sp,
-                        lineHeight = 16.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                    )
                 }
             }
         }

@@ -117,7 +117,11 @@ class TunnelVpnService : VpnService() {
                 connectOnce(p)
                 failures = 0
                 lastError = null
-                while (!stopRequested && ssh?.isConnected == true) delay(1000)
+                var tick = 0
+                while (!stopRequested && ssh?.isConnected == true) {
+                    if (tick++ % 15 == 0) measurePing()
+                    delay(1000)
+                }
                 if (stopRequested) break
                 AppLog.w("SSH connection lost")
                 lastError = "SSH connection lost"
@@ -195,11 +199,26 @@ class TunnelVpnService : VpnService() {
         TunnelStatus.update {
             it.copy(
                 status = Status.CONNECTED, message = null, connectedAt = System.currentTimeMillis(),
-                socksPort = port, serverVersion = conn.serverVersion,
+                socksPort = port, serverVersion = conn.serverVersion, pingMs = -1,
             )
         }
         AppLog.ok("Connected ✔")
         updateNotification()
+    }
+
+    /** Latency through the tunnel: time to open (and close) a channel to a public DNS server. */
+    private fun measurePing() {
+        val conn = ssh ?: return
+        scope.launch {
+            val t0 = System.nanoTime()
+            val ms = try {
+                conn.openDirect("1.1.1.1", 53, 5_000).close()
+                (System.nanoTime() - t0) / 1_000_000
+            } catch (e: Exception) {
+                -1L
+            }
+            TunnelStatus.update { it.copy(pingMs = ms) }
+        }
     }
 
     private fun establishVpn(p: Profile) {

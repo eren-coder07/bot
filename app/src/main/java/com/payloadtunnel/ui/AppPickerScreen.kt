@@ -27,10 +27,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -81,18 +79,15 @@ fun AppPickerScreen(onDone: () -> Unit) {
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Choose apps") },
-                navigationIcon = { IconButton(onClick = onDone) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
-                actions = {
-                    TextButton(onClick = { Graph.settings.update { it.copy(selectedApps = emptySet()) } }) { Text("Clear") }
-                },
-            )
-        },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+    Column(Modifier.fillMaxSize()) {
+        TopBar(
+            "Choose apps",
+            left = { CircleIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onDone) },
+            right = {
+                TextButton(onClick = { Graph.settings.update { it.copy(selectedApps = emptySet()) } }) { Text("Clear", color = Lime) }
+            },
+        )
+        Column(Modifier.fillMaxSize()) {
             Text(
                 settings.appFilterMode.label,
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary,

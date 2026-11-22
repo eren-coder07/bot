@@ -26,6 +26,8 @@ data class TunnelState(
     val connectedAt: Long = 0L,
     val socksPort: Int = 0,
     val serverVersion: String? = null,
+    /** Round trip of opening a channel through SSH, or -1 if unknown. */
+    val pingMs: Long = -1,
 )
 
 /** Process-wide connection state and traffic counters. */

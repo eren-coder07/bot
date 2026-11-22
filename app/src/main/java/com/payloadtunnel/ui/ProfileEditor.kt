@@ -28,10 +28,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -87,21 +85,14 @@ fun ProfileEditor(initial: Profile, onSave: (Profile) -> Unit, onCancel: () -> U
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (initial.sshHost.isEmpty()) "New profile" else "Edit profile") },
-                navigationIcon = {
-                    IconButton(onClick = onCancel) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Cancel") }
-                },
-                actions = {
-                    IconButton(onClick = ::save) { Icon(Icons.Filled.Check, "Save") }
-                },
-            )
-        },
-    ) { padding ->
+    Column(Modifier.fillMaxSize()) {
+        TopBar(
+            if (initial.sshHost.isEmpty()) "New server" else "Edit server",
+            left = { CircleIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Cancel", onCancel) },
+            right = { CircleIconButton(Icons.Filled.Check, "Save", ::save) },
+        )
         Column(
-            Modifier.fillMaxSize().padding(padding).imePadding()
+            Modifier.fillMaxSize().imePadding()
                 .verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {

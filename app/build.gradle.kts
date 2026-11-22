@@ -89,6 +89,16 @@ android {
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            // Screenshot rendering (Robolectric) only when asked: ./gradlew ... -Pscreenshots
+            if (project.hasProperty("screenshots")) {
+                it.systemProperty("roborazzi.test.record", "true")
+                it.filter.includeTestsMatching("*ScreenshotTest*")
+            } else {
+                it.filter.excludeTestsMatching("*ScreenshotTest*")
+            }
+        }
     }
     packaging {
         resources {
@@ -117,4 +127,9 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    testImplementation("org.robolectric:robolectric:4.13")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.20.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.20.0")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

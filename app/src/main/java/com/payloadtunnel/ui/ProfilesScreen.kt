@@ -3,40 +3,46 @@ package com.payloadtunnel.ui
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -45,23 +51,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.payloadtunnel.Graph
 import com.payloadtunnel.core.AppLog
+import com.payloadtunnel.core.Status
 import com.payloadtunnel.core.TunnelStatus
 import com.payloadtunnel.data.Profile
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ProfilesScreen(modifier: Modifier, onEdit: (Profile) -> Unit) {
+fun ProfilesScreen(onBack: () -> Unit, onEdit: (Profile) -> Unit) {
     val context = LocalContext.current
     val profiles by Graph.profiles.profiles.collectAsState()
     val selectedId by Graph.profiles.selectedId.collectAsState()
     val tunnel by TunnelStatus.state.collectAsState()
+    var query by remember { mutableStateOf("") }
     var toDelete by remember { mutableStateOf<Profile?>(null) }
     var exportIds by remember { mutableStateOf<Set<String>?>(null) }
+    var topMenu by remember { mutableStateOf(false) }
+    val locked = tunnel.status.isActive
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -80,9 +96,7 @@ fun ProfilesScreen(modifier: Modifier, onEdit: (Profile) -> Unit) {
         exportIds = null
         if (uri == null) return@rememberLauncherForActivityResult
         try {
-            context.contentResolver.openOutputStream(uri, "wt")!!.bufferedWriter().use {
-                it.write(Graph.profiles.exportJson(ids))
-            }
+            context.contentResolver.openOutputStream(uri, "wt")!!.bufferedWriter().use { it.write(Graph.profiles.exportJson(ids)) }
             Toast.makeText(context, "Profiles exported", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             AppLog.e("Export failed: ${e.message}")
@@ -90,74 +104,160 @@ fun ProfilesScreen(modifier: Modifier, onEdit: (Profile) -> Unit) {
         }
     }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopAppBar(
-                title = { Text("Profiles") },
-                actions = {
-                    IconButton(onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*")) }) {
-                        Icon(Icons.Filled.FileDownload, contentDescription = "Import JSON")
+    val selected = profiles.firstOrNull { it.id == selectedId }
+    val q = query.trim().lowercase()
+    val filtered = profiles.filter {
+        q.isEmpty() || it.name.lowercase().contains(q) || it.sshHost.lowercase().contains(q) || it.proxy.lowercase().contains(q)
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        TopBar(
+            "Servers",
+            left = { CircleIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack) },
+            right = {
+                CircleIconButton(Icons.Filled.Add, "Add server", { onEdit(Profile(name = "New server", sshPort = 22)) })
+                Box {
+                    CircleIconButton(Icons.Outlined.MoreVert, "More", { topMenu = true })
+                    DropdownMenu(expanded = topMenu, onDismissRequest = { topMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Import JSON") }, leadingIcon = { Icon(Icons.Filled.FileDownload, null) },
+                            onClick = {
+                                topMenu = false
+                                importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Export all") }, leadingIcon = { Icon(Icons.Filled.FileUpload, null) },
+                            onClick = {
+                                topMenu = false
+                                exportIds = null
+                                exportLauncher.launch("payloadtunnel-profiles.json")
+                            },
+                        )
                     }
-                    IconButton(onClick = {
-                        exportIds = null
-                        exportLauncher.launch("payloadtunnel-profiles.json")
-                    }) {
-                        Icon(Icons.Filled.FileUpload, contentDescription = "Export all as JSON")
-                    }
-                },
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { onEdit(Profile(name = "New profile", sshPort = 22)) }) {
-                Icon(Icons.Filled.Add, contentDescription = "Add profile")
-            }
-        },
-    ) { padding ->
-        if (profiles.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("No profiles yet. Tap + to add one.")
-            }
-        }
+                }
+            },
+        )
+
         LazyColumn(
-            Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 88.dp),
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
         ) {
-            items(profiles, key = { it.id }) { p ->
-                val locked = tunnel.status.isActive
-                Card(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                        .clickable(enabled = !locked) { Graph.profiles.select(p.id) },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            item {
+                // Search
+                Row(
+                    Modifier.fillMaxWidth().clip(CircleShape).background(Color.White.copy(alpha = 0.05f))
+                        .border(1.dp, CardBorder, CircleShape).padding(horizontal = 16.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = p.id == selectedId, onClick = { Graph.profiles.select(p.id) }, enabled = !locked)
-                        Column(Modifier.weight(1f)) {
-                            Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                "${p.mode.label} · ${p.sshHost}:${p.sshPort}",
-                                style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            if (p.mode.usesProxy && p.proxy.isNotBlank()) {
+                    Icon(Icons.Filled.Search, null, tint = TextSecondary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Box(Modifier.weight(1f)) {
+                        if (query.isEmpty()) Text("Search by name or host", color = TextSecondary, fontSize = 14.sp)
+                        BasicTextField(
+                            query, { query = it }, singleLine = true,
+                            textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp),
+                            cursorBrush = SolidColor(Lime), modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
+
+            if (selected != null && q.isEmpty()) {
+                item {
+                    GlassCard(Modifier.fillMaxWidth(), highlighted = true) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ProfileAvatar(selected.name, 46.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        if (tunnel.status == Status.CONNECTED) "Active" else "Selected",
+                                        color = TextSecondary, fontSize = 12.sp,
+                                    )
+                                    if (tunnel.status == Status.CONNECTED && tunnel.pingMs >= 0) {
+                                        Text("  ${tunnel.pingMs}ms", color = TextSecondary, fontSize = 12.sp)
+                                    }
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        selected.mode.label, color = TextPrimary, fontSize = 10.sp,
+                                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.1f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                                    )
+                                }
                                 Text(
-                                    "Proxy ${p.proxy}", style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                                    selected.name, color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
                             }
+                            Box(
+                                Modifier.size(24.dp).clip(RoundedCornerShape(6.dp)).background(Lime),
+                                contentAlignment = Alignment.Center,
+                            ) { Icon(Icons.Filled.Check, null, tint = OnLime, modifier = Modifier.size(16.dp)) }
                         }
-                        var menu by remember { mutableStateOf(false) }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+
+            item {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
+                        .background(Card)
+                        .padding(start = 12.dp, end = 12.dp, top = 14.dp, bottom = 4.dp),
+                ) {
+                    SectionLabel("Select servers")
+                    if (filtered.isEmpty()) {
+                        Text(
+                            if (profiles.isEmpty()) "No servers yet. Tap + to add one." else "No match",
+                            color = TextSecondary, fontSize = 13.sp, modifier = Modifier.padding(vertical = 16.dp),
+                        )
+                    }
+                }
+            }
+            items(filtered, key = { it.id }) { p ->
+                var menu by remember { mutableStateOf(false) }
+                val isSel = p.id == selectedId
+                Box(
+                    Modifier.fillMaxWidth().background(Card).padding(horizontal = 12.dp, vertical = 4.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                            .background(if (isSel) CardHigh else Color.White.copy(alpha = 0.02f))
+                            .border(1.dp, if (isSel) Lime.copy(alpha = 0.25f) else CardBorder, RoundedCornerShape(14.dp))
+                            .combinedClickable(
+                                onClick = { if (!locked) Graph.profiles.select(p.id) },
+                                onLongClick = { menu = true },
+                            )
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ProfileAvatar(p.name, 34.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(p.name, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                "${p.sshHost}:${p.sshPort}" + if (p.mode.usesProxy && p.proxy.isNotBlank()) " · ${p.proxy}" else "",
+                                color = TextSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        SignalBars(if (isSel && tunnel.status == Status.CONNECTED) 3 else 2)
+                        Spacer(Modifier.width(10.dp))
+                        Icon(
+                            if (isSel) Icons.Filled.Star else Icons.Outlined.StarOutline, null,
+                            tint = if (isSel) Lime else TextSecondary, modifier = Modifier.size(20.dp),
+                        )
                         Box {
-                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                            Icon(
+                                Icons.Outlined.MoreVert, "More", tint = TextSecondary,
+                                modifier = Modifier.padding(start = 6.dp).size(20.dp).clip(CircleShape)
+                                    .combinedClickable(onClick = { menu = true }),
+                            )
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("Edit") }, leadingIcon = { Icon(Icons.Filled.Edit, null) },
-                                    onClick = { menu = false; onEdit(p) },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
-                                    onClick = { menu = false; Graph.profiles.duplicate(p.id) },
-                                )
+                                DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onEdit(p) })
+                                DropdownMenuItem(text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Filled.ContentCopy, null) }, onClick = { menu = false; Graph.profiles.duplicate(p.id) })
                                 DropdownMenuItem(
                                     text = { Text("Export") }, leadingIcon = { Icon(Icons.Filled.Share, null) },
                                     onClick = {
@@ -168,13 +268,22 @@ fun ProfilesScreen(modifier: Modifier, onEdit: (Profile) -> Unit) {
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Delete") }, leadingIcon = { Icon(Icons.Filled.Delete, null) },
-                                    enabled = !(locked && p.id == selectedId),
-                                    onClick = { menu = false; toDelete = p },
+                                    enabled = !(locked && isSel), onClick = { menu = false; toDelete = p },
                                 )
                             }
                         }
                     }
                 }
+            }
+            item {
+                Box(
+                    Modifier.fillMaxWidth().height(14.dp)
+                        .clip(RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp)).background(Card),
+                )
+                Text(
+                    "Tap to select · long-press or ⋮ to edit, duplicate, export or delete",
+                    color = TextSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp, start = 4.dp),
+                )
             }
         }
     }
@@ -182,11 +291,9 @@ fun ProfilesScreen(modifier: Modifier, onEdit: (Profile) -> Unit) {
     toDelete?.let { p ->
         AlertDialog(
             onDismissRequest = { toDelete = null },
-            title = { Text("Delete profile?") },
+            title = { Text("Delete server?") },
             text = { Text("\"${p.name}\" will be removed permanently.") },
-            confirmButton = {
-                TextButton(onClick = { Graph.profiles.delete(p.id); toDelete = null }) { Text("Delete") }
-            },
+            confirmButton = { TextButton(onClick = { Graph.profiles.delete(p.id); toDelete = null }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Cancel") } },
         )
     }

@@ -15,11 +15,12 @@ file and allow "Install unknown apps" when Android asks.
 ## Using the app
 
 1. Open the app. On Android 13+ allow notifications (used for the status notification).
-2. **Home** → pick a profile → tap **CONNECT**. The first time, Android asks for VPN
+2. **VPN** tab → pick a server card at the bottom (or the **Servers** tab) → tap the power button. The first time, Android asks for VPN
    permission: tap **OK**.
 3. The status goes *Connecting → Sending payload → Authenticating → Connected*. The timer,
    upload/download speed and totals are shown on the Home screen.
-4. Tap **DISCONNECT** (or *Disconnect* in the notification) to stop.
+4. Tap the power button again (or *Disconnect* in the notification) to stop.
+   **Speed Test** shows a live speed gauge, ping and totals; **☰** opens Settings.
 5. **Logs** shows every step with timestamps (proxy connect, payload sent, server response
    codes, SSH auth, SOCKS start, VPN up). Use the copy button to share a log.
 
@@ -27,7 +28,7 @@ A default profile **rifi tech win\*6** is created on first launch. You can edit 
 
 ## Adding your own server
 
-**Profiles** → **+** (or ⋮ → *Duplicate* on an existing profile and edit it):
+**Servers** → **+** (or ⋮ / long-press → *Duplicate* on an existing one and edit it):
 
 | Field | Meaning |
 |---|---|
@@ -38,7 +39,8 @@ A default profile **rifi tech win\*6** is created on first launch. You can edit 
 | Proxy host:port | Remote proxy, e.g. `help.twitter.com:8080`. Empty = connect directly to the SSH host |
 | Payload | HTTP payload with tags (below). Real line breaks are ignored, use `[crlf]` |
 | Local SOCKS5 port | Default `1080`. If it is busy a free port is chosen automatically |
-| DNS servers | Default `1.1.1.1, 8.8.8.8`. DNS is resolved through the SSH tunnel |
+| Remote DNS | On by default: the SSH server resolves host names (most reliable) |
+| DNS servers | Used when Remote DNS is off (default `1.1.1.1, 8.8.8.8`), queried over TCP through SSH |
 
 ### Payload tags
 
@@ -57,7 +59,7 @@ starts SSH on the same socket. If the server stays silent, SSH starts anyway aft
 
 ### Import / export
 
-**Profiles** → top bar icons import or export all profiles as JSON; ⋮ → *Export* exports one
+**Servers** → top-right ⋮ imports or exports all profiles as JSON; a row's ⋮ → *Export* exports one
 profile. Exported files **contain passwords in plain text**, so share them carefully.
 
 Example:
@@ -119,7 +121,8 @@ signature and you must uninstall the old app before installing it. Add the secre
 
 ## Android limitations
 
-- Only TCP goes through SSH. DNS (UDP 53) is converted to TCP and tunnelled; other UDP
+- IPv6 is not routed into the tunnel; Android blocks it for tunnelled apps so they use IPv4.
+- Only TCP goes through SSH. DNS is resolved by the server (or converted to TCP); other UDP
   (QUIC, games, voice calls) cannot be carried by an SSH tunnel and is dropped, so apps fall
   back to TCP where they can.
 - Only one VPN app can be active at a time; starting another VPN disconnects this one.
