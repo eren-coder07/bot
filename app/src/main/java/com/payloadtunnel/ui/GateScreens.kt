@@ -142,24 +142,3 @@ fun LoadingScreen() {
         }
     }
 }
-
-@Composable
-fun SecurityBlockScreen(reason: String, onRecheck: () -> Unit) {
-    AppBackground {
-        Column(
-            Modifier.fillMaxSize().padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
-        ) {
-            Box(
-                Modifier.size(88.dp).clip(CircleShape).background(Failed.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Filled.GppMaybe, null, tint = Failed, modifier = Modifier.size(48.dp)) }
-            Spacer(Modifier.height(20.dp))
-            Text("Can't run safely here", color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(10.dp))
-            Text(reason, color = TextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(24.dp))
-            PrimaryButton("Check again", onClick = onRecheck)
-        }
-    }
-}

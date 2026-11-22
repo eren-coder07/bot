@@ -113,7 +113,7 @@ fun AccountScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("On your PC set a SOCKS5 proxy to:", color = TextSecondary, fontSize = 12.sp)
+                                Text("On your PC set an HTTP or SOCKS5 proxy to:", color = TextSecondary, fontSize = 12.sp)
                                 Text(proxy, color = Lime, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
                             }
                             Box(
@@ -148,18 +148,6 @@ fun AccountScreen(
                 RowAction(Icons.Filled.Login, "Use a different key", "Sign out and enter another key") {
                     TunnelVpnService.disconnect(context)
                     Graph.session.clearKey()
-                }
-            }
-
-            // Security
-            GlassCard(Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Shield, null, tint = Connected, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("Protected", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text("Root, tamper and traffic-capture checks are on", color = TextSecondary, fontSize = 12.sp)
-                    }
                 }
             }
 

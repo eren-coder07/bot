@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (compromised()) { killApp(); return }
         enableEdgeToEdge()
         ads = AdManager(this)
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -62,23 +63,29 @@ class MainActivity : ComponentActivity() {
         setContent { AppTheme { Root() } }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (compromised()) killApp()
+    }
+
+    private fun compromised(): Boolean = SecurityGuard.check(this).block() != null
+
+    private fun killApp() {
+        runCatching { finishAffinity() }
+        android.os.Process.killProcess(android.os.Process.myPid())
+        kotlin.system.exitProcess(10)
+    }
+
     @Composable
     private fun Root() {
         val scope = rememberCoroutineScope()
         val sessionState by Graph.session.state.collectAsState()
         val configs by Graph.configs.configs.collectAsState()
-        var security by remember { mutableStateOf(SecurityGuard.check(this).block()) }
         var adLoading by remember { mutableStateOf(false) }
         setAdLoading = { adLoading = it }
 
         LaunchedEffect(Unit) {
             if (Graph.session.hasKey()) Graph.refresh()
-            security = SecurityGuard.check(this@MainActivity).block()
-        }
-
-        if (security != null) {
-            SecurityBlockScreen(security!!) { security = SecurityGuard.check(this).block() }
-            return
         }
 
         val gate = !Graph.session.hasKey() || sessionState == Session.State.INVALID || sessionState == Session.State.BANNED

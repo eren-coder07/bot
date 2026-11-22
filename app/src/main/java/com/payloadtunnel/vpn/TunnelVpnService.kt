@@ -421,7 +421,7 @@ class TunnelVpnService : VpnService() {
             TunnelStatus.state.value.status == Status.CONNECTED
         if (want && shareServer == null) {
             try {
-                val srv = Socks5Server(up!!, InetAddress.getByName("0.0.0.0"))
+                val srv = Socks5Server(up!!, InetAddress.getByName("0.0.0.0"), allowHttp = true)
                 val port = srv.start(ShareNet.state.value.port.takeIf { it > 0 } ?: ShareNet.DEFAULT_PORT)
                 shareServer = srv
                 ShareNet.setRunning(port, ShareNet.localAddress())

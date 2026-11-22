@@ -199,7 +199,7 @@ fun HomeScreen(
             ) {
                 Icon(Icons.Outlined.Wifi, null, tint = Lime, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Sharing · PC SOCKS5 ${share.address}:${share.port}", color = TextPrimary, fontSize = 12.sp)
+                Text("Sharing · PC proxy ${share.address}:${share.port}", color = TextPrimary, fontSize = 12.sp)
             }
         }
 
