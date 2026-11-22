@@ -15,6 +15,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.payloadtunnel.App
 import com.payloadtunnel.Graph
+import com.payloadtunnel.data.Session
+import com.payloadtunnel.data.ShareNet
+import com.payloadtunnel.net.ApiException
 import com.payloadtunnel.R
 import com.payloadtunnel.core.AppLog
 import com.payloadtunnel.core.HandshakeException
@@ -27,7 +30,6 @@ import com.payloadtunnel.core.TunnelState
 import com.payloadtunnel.core.TunnelStatus
 import com.payloadtunnel.core.Upstream
 import com.payloadtunnel.core.VlessUpstream
-import com.payloadtunnel.data.AppFilterMode
 import com.payloadtunnel.data.Profile
 import com.payloadtunnel.ui.MainActivity
 import com.payloadtunnel.ui.formatBytes
@@ -53,6 +55,7 @@ class TunnelVpnService : VpnService() {
 
     @Volatile private var ssh: Upstream? = null
     @Volatile private var socks: Socks5Server? = null
+    @Volatile private var shareServer: Socks5Server? = null
     @Volatile private var pendingSocket: Socket? = null
     @Volatile private var stopRequested = false
 
@@ -70,10 +73,9 @@ class TunnelVpnService : VpnService() {
             else -> {
                 // ACTION_CONNECT, or started by the system for always-on VPN.
                 val id = intent?.getStringExtra(EXTRA_PROFILE_ID)
-                val p = Graph.profiles.get(id) ?: Graph.profiles.selected()
+                val p = Graph.configs.get(id) ?: Graph.configs.selected()
                 if (p == null) {
-                    AppLog.e("No profile selected")
-                    TunnelStatus.set(Status.ERROR, "No profile selected")
+                    TunnelStatus.set(Status.ERROR, "No server selected")
                     stopSelf()
                     return START_NOT_STICKY
                 }
@@ -100,6 +102,7 @@ class TunnelVpnService : VpnService() {
             notifJob = scope.launch {
                 while (isActive) {
                     delay(2000)
+                    reconcileShare()
                     updateNotification()
                 }
             }
@@ -107,12 +110,20 @@ class TunnelVpnService : VpnService() {
     }
 
     private suspend fun runLoop(p: Profile) {
-        val settings = Graph.settings.current
+        val autoReconnect = true
+        val maxRetries = 0
         var failures = 0
         var lastError: String? = null
         TunnelStatus.resetTraffic()
         TunnelStatus.update { TunnelState(status = Status.CONNECTING, profileName = p.name) }
-        AppLog.i("──── Starting \"${p.name}\" (${p.mode.label}) ────")
+        AppLog.step("Connecting to ${p.group.ifBlank { p.name }}…")
+        AppLog.dbg("start ${p.name} (${p.mode.label})")
+
+        // Time-credit gate: must have an access key and remaining time.
+        if (!checkTimeBeforeConnect()) {
+            shutdown(null)
+            return
+        }
 
         while (scope.isActive && !stopRequested) {
             try {
@@ -121,36 +132,36 @@ class TunnelVpnService : VpnService() {
                 lastError = null
                 var tick = 0
                 while (!stopRequested && ssh?.isConnected == true) {
-                    if (tick++ % 15 == 0) measurePing()
+                    if (tick % 15 == 0) measurePing()
+                    if (tick % 30 == 0 && !sendHeartbeat()) {
+                        AppLog.warn("Your time ran out. Watch an ad to keep going.")
+                        stopRequested = true
+                        break
+                    }
+                    tick++
                     delay(1000)
                 }
                 if (stopRequested) break
-                AppLog.w("Connection lost")
+                AppLog.warn("Connection lost, reconnecting…")
                 lastError = "Connection lost"
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
                 if (stopRequested) break
-                lastError = when (e) {
-                    is HandshakeException -> e.message
-                    else -> e.message ?: e.javaClass.simpleName
-                }
-                AppLog.e(lastError ?: "Unknown error")
+                AppLog.dbg("connect error: ${e.message}")
+                lastError = friendlyError(e)
+                AppLog.fail(lastError)
                 TunnelStatus.set(Status.ERROR, lastError)
             }
             closeConnections()
             if (stopRequested) break
 
-            if (!settings.autoReconnect) break
+            if (!autoReconnect) break
             failures++
-            if (settings.maxRetries > 0 && failures > settings.maxRetries) {
-                AppLog.e("Giving up after ${settings.maxRetries} reconnect attempt(s)")
-                break
-            }
+            if (maxRetries > 0 && failures > maxRetries) break
             val wait = minOf(2_000L * failures, 10_000L)
-            val limit = if (settings.maxRetries > 0) "/${settings.maxRetries}" else ""
-            val msg = "Reconnecting in ${wait / 1000}s (attempt $failures$limit)"
-            AppLog.w(msg)
+            val msg = "Reconnecting in ${wait / 1000}s…"
+            AppLog.dbg(msg)
             TunnelStatus.update { it.copy(status = Status.RECONNECTING, message = msg, connectedAt = 0) }
             updateNotification()
             var waited = 0L
@@ -180,6 +191,7 @@ class TunnelVpnService : VpnService() {
                 protect = { protect(it) },
                 onSendingPayload = {
                     TunnelStatus.set(Status.SENDING_PAYLOAD)
+                    AppLog.step("Securing connection…")
                     updateNotification()
                 },
                 register = { pendingSocket = it },
@@ -191,19 +203,19 @@ class TunnelVpnService : VpnService() {
 
             TunnelStatus.set(Status.AUTHENTICATING)
             updateNotification()
-            AppLog.i("Starting SSH session, authenticating as \"${p.username}\"")
+            AppLog.step("Authenticating…")
             val sshConn = SshConnection.connect(p, prepared)
             pendingSocket = null
             ssh = sshConn
             conn = sshConn
-            AppLog.ok("SSH authenticated (server: ${sshConn.serverVersion ?: "unknown"})")
+            AppLog.dbg("SSH authenticated: ${sshConn.serverVersion}")
             if (stopRequested) return
         }
 
         val server = Socks5Server(conn)
         val port = server.start(p.localSocksPort)
         socks = server
-        AppLog.ok("SOCKS5 proxy started on 127.0.0.1:$port (forwarding over ${if (p.mode.isVless) "VLESS" else "SSH"})")
+        AppLog.dbg("SOCKS5 on 127.0.0.1:$port over ${if (p.mode.isVless) "VLESS" else "SSH"}")
 
         if (tun == null) establishVpn(p)
         if (!hevRunning || hevPort != port) startTun2Socks(port, p.remoteDns)
@@ -214,7 +226,8 @@ class TunnelVpnService : VpnService() {
                 socksPort = port, serverVersion = conn.description, pingMs = -1,
             )
         }
-        AppLog.ok("Connected ✔")
+        AppLog.good("Connected")
+        reconcileShare()
         updateNotification()
     }
 
@@ -234,7 +247,6 @@ class TunnelVpnService : VpnService() {
     }
 
     private fun establishVpn(p: Profile) {
-        val settings = Graph.settings.current
         val builder = Builder()
             .setSession(p.name.ifBlank { getString(R.string.app_name) })
             .setMtu(MTU)
@@ -254,7 +266,7 @@ class TunnelVpnService : VpnService() {
                     builder.addDnsServer(InetAddress.getByName(d))
                     usedDns += d
                 } catch (e: Exception) {
-                    AppLog.w("Ignoring invalid DNS server \"$d\" (must be an IPv4 address)")
+                    AppLog.dbg("ignoring invalid DNS \"$d\"")
                 }
             }
             if (usedDns.isEmpty()) {
@@ -264,7 +276,8 @@ class TunnelVpnService : VpnService() {
             usedDns[usedDns.size - 1] = usedDns.last() + " (over TCP through SSH)"
         }
 
-        val appsDesc = applyAppFilter(builder, settings.appFilterMode, settings.selectedApps)
+        // All apps use the tunnel; only our own control traffic bypasses it.
+        builder.addDisallowedApplication(packageName)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
         builder.setConfigureIntent(
@@ -276,36 +289,7 @@ class TunnelVpnService : VpnService() {
 
         tun = builder.establish()
             ?: throw IllegalStateException("VPN permission was not granted (or another VPN app took over)")
-        AppLog.ok("VPN interface up · DNS ${usedDns.joinToString()} · $appsDesc")
-    }
-
-    private fun applyAppFilter(builder: Builder, mode: AppFilterMode, apps: Set<String>): String {
-        val self = packageName
-        fun installed(pkg: String) = try {
-            packageManager.getApplicationInfo(pkg, 0); true
-        } catch (e: PackageManager.NameNotFoundException) {
-            false
-        }
-        when (mode) {
-            AppFilterMode.INCLUDE -> {
-                val list = apps.filter { it != self && installed(it) }
-                if (list.isNotEmpty()) {
-                    list.forEach { builder.addAllowedApplication(it) }
-                    return "${list.size} selected app(s) only"
-                }
-                AppLog.w("Per-app VPN: no apps selected, tunnelling all apps")
-            }
-            AppFilterMode.EXCLUDE -> {
-                builder.addDisallowedApplication(self)
-                val list = apps.filter { it != self && installed(it) }
-                list.forEach { builder.addDisallowedApplication(it) }
-                return "all apps except ${list.size} excluded"
-            }
-            AppFilterMode.ALL -> Unit
-        }
-        // Our own SSH traffic must never enter the tunnel.
-        builder.addDisallowedApplication(self)
-        return "all apps"
+        AppLog.dbg("VPN interface up, DNS ${usedDns.joinToString()}")
     }
 
     private fun startTun2Socks(port: Int, remoteDns: Boolean) {
@@ -321,11 +305,14 @@ class TunnelVpnService : VpnService() {
         }
         hevRunning = true
         hevPort = port
-        AppLog.ok("tun2socks running: all TUN traffic → SOCKS5 127.0.0.1:$port")
+        AppLog.dbg("tun2socks running -> SOCKS5 127.0.0.1:$port")
     }
 
     /** Closes SSH + SOCKS but keeps the VPN interface so nothing leaks while reconnecting. */
     private fun closeConnections() {
+        shareServer?.stop()
+        shareServer = null
+        ShareNet.setStopped()
         pendingSocket?.let { runCatching { it.close() } }
         pendingSocket = null
         socks?.stop()
@@ -349,13 +336,13 @@ class TunnelVpnService : VpnService() {
         } else {
             TunnelStatus.update { it.copy(status = Status.DISCONNECTED, message = null, connectedAt = 0) }
         }
-        AppLog.i("Disconnected")
+        AppLog.step("Disconnected")
         stopForegroundCompat()
         stopSelf()
     }
 
     private fun userStop() {
-        AppLog.i("Disconnect requested")
+        AppLog.dbg("disconnect requested")
         stopRequested = true
         TunnelStatus.set(Status.DISCONNECTING)
         val running = job
@@ -368,7 +355,7 @@ class TunnelVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        AppLog.w("VPN permission revoked (another VPN was started or it was turned off in settings)")
+        AppLog.dbg("VPN permission revoked")
         userStop()
     }
 
@@ -384,6 +371,76 @@ class TunnelVpnService : VpnService() {
         }
         scope.cancel()
         super.onDestroy()
+    }
+
+    /** Confirms the key is valid, not banned, and has time left. Updates Session. */
+    private suspend fun checkTimeBeforeConnect(): Boolean {
+        val key = Graph.session.key.value
+        if (key.isNullOrBlank()) {
+            AppLog.fail("Please enter your access key.")
+            TunnelStatus.set(Status.ERROR, "No access key")
+            return false
+        }
+        return try {
+            val auth = Graph.api.auth(key, Graph.session.deviceId)
+            Graph.session.applyAuth(auth)
+            if (auth.timeRemaining <= 0) {
+                AppLog.warn("No time left. Watch an ad to get more.")
+                TunnelStatus.set(Status.ERROR, "No time left")
+                false
+            } else true
+        } catch (e: ApiException) {
+            when (e.code) {
+                "banned" -> { Graph.session.setState(Session.State.BANNED); AppLog.fail("Access blocked.") }
+                "invalid", "device" -> { Graph.session.setState(Session.State.INVALID); AppLog.fail("Your access key is not valid.") }
+                else -> AppLog.dbg("auth check failed: ${e.message}")
+            }
+            // Allow connecting if the control server is unreachable but we still hold local time.
+            if (e.code == "network" && Graph.session.timeRemaining.value > 0) true
+            else { TunnelStatus.set(Status.ERROR, e.message); false }
+        }
+    }
+
+    /** Periodic heartbeat: decrements server-side time. Returns false when time is exhausted. */
+    private suspend fun sendHeartbeat(): Boolean {
+        val key = Graph.session.key.value ?: return true
+        return try {
+            val (remaining, expired) = Graph.api.heartbeat(key, connected = true)
+            Graph.session.setTime(remaining)
+            !expired
+        } catch (e: ApiException) {
+            if (e.code == "banned") { Graph.session.setState(Session.State.BANNED); false }
+            else true // tolerate transient network errors
+        }
+    }
+
+    /** Starts/stops the LAN SOCKS proxy for "share net" based on the toggle and connection state. */
+    private fun reconcileShare() {
+        val up = ssh
+        val want = ShareNet.state.value.enabled && up != null &&
+            TunnelStatus.state.value.status == Status.CONNECTED
+        if (want && shareServer == null) {
+            try {
+                val srv = Socks5Server(up!!, InetAddress.getByName("0.0.0.0"))
+                val port = srv.start(ShareNet.state.value.port.takeIf { it > 0 } ?: ShareNet.DEFAULT_PORT)
+                shareServer = srv
+                ShareNet.setRunning(port, ShareNet.localAddress())
+                AppLog.good("Sharing connection on ${ShareNet.localAddress() ?: "this device"}:$port")
+            } catch (e: Exception) {
+                AppLog.dbg("share start failed: ${e.message}")
+            }
+        } else if (!want && shareServer != null) {
+            shareServer?.stop()
+            shareServer = null
+            ShareNet.setStopped()
+            AppLog.step("Stopped sharing")
+        }
+    }
+
+    private fun friendlyError(e: Throwable): String = when {
+        e is HandshakeException -> "Couldn't connect to this server. Try another one."
+        (e.message ?: "").contains("auth", true) -> "Couldn't sign in to this server. Try another one."
+        else -> "Couldn't connect. Check your internet or try another server."
     }
 
     // ───────────────────────── helpers ─────────────────────────
