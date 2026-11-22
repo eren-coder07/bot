@@ -80,6 +80,31 @@ class EndToEndTest {
             ctl.close()
         }
 
+        // A connection whose reader is stalled must not freeze the other connections.
+        if (env("E2E_BIGFILE") != null) {
+            val stalled = Socket(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port)))
+            stalled.receiveBufferSize = 64 * 1024
+            stalled.connect(InetSocketAddress.createUnresolved(httpHost, httpPort), 10_000)
+            stalled.getOutputStream().write("GET /${env("E2E_BIGFILE")} HTTP/1.0\r\nHost: x\r\n\r\n".toByteArray())
+            Thread.sleep(3000) // let all buffers fill up, never read from `stalled`
+            val t0 = System.currentTimeMillis()
+            repeat(3) {
+                val s2 = Socket(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port)))
+                s2.soTimeout = 8000
+                s2.connect(InetSocketAddress.createUnresolved(httpHost, httpPort), 10_000)
+                s2.getOutputStream().write("GET / HTTP/1.0\r\nHost: x\r\n\r\n".toByteArray())
+                val b2 = s2.getInputStream().readBytes().toString(Charsets.UTF_8)
+                assertTrue(b2.contains("hello-through-tunnel"))
+                s2.close()
+            }
+            println("3 requests while another connection is stalled: ${System.currentTimeMillis() - t0} ms")
+            // Now drain the stalled connection completely: flow control must resume it.
+            val total = stalled.getInputStream().readBytes().size
+            println("stalled connection finally received $total bytes")
+            assertTrue(total > 40_000_000)
+            stalled.close()
+        }
+
         socks.stop()
         ssh.close()
         blocker.close()

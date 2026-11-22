@@ -2,6 +2,7 @@ package com.payloadtunnel.core
 
 import android.util.Log
 import com.jcraft.jsch.ChannelDirectTCPIP
+import com.jcraft.jsch.FlowControlledInput
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.JSchException
 import com.jcraft.jsch.Logger
@@ -28,10 +29,16 @@ class SshConnection private constructor(private val session: Session) {
         ch.setPort(port)
         ch.setOrgIPAddress("127.0.0.1")
         ch.setOrgPort(0)
-        // Streams must be obtained before connect() so JSch opens the channel synchronously.
-        val input = ch.inputStream
+        // Own receive buffer with per-channel flow control (see FlowControlledInput).
+        val input = FlowControlledInput.attach(ch, WINDOW, PACKET, BUFFER_HIGH, BUFFER_LOW)
         val output = ch.outputStream
-        ch.connect(timeoutMs)
+        try {
+            ch.connect(timeoutMs)
+        } catch (e: Exception) {
+            input.close()
+            ch.disconnect()
+            throw e
+        }
         return DirectChannel(ch, input, output)
     }
 
@@ -114,6 +121,10 @@ class SshConnection private constructor(private val session: Session) {
             }
         }
 
+        const val WINDOW = 512 * 1024
+        const val PACKET = 32 * 1024
+        const val BUFFER_HIGH = 1024 * 1024
+        const val BUFFER_LOW = 256 * 1024
         const val KEEPALIVE_MS = 15_000
         const val KEEPALIVE_COUNT = 3
         const val CONNECT_TIMEOUT_MS = 30_000
@@ -138,6 +149,7 @@ class SshConnection private constructor(private val session: Session) {
 
 class DirectChannel(private val channel: ChannelDirectTCPIP, val input: InputStream, val output: OutputStream) {
     fun close() {
+        runCatching { input.close() }
         runCatching { channel.disconnect() }
     }
 }
