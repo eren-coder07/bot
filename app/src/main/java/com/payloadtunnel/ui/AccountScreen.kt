@@ -74,7 +74,7 @@ fun AccountScreen(
         ) {
             // Time
             GlassCard(Modifier.fillMaxWidth(), highlighted = true) {
-                Text("Time remaining", color = TextSecondary, fontSize = 12.sp)
+                Text("Time remaining", color = TextSecondary, fontSize = 12.sp, fontFamily = Poppins)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     if (time <= 0) "No time left" else formatDuration(time * 1000),
@@ -88,14 +88,17 @@ fun AccountScreen(
                 )
             }
 
+            // Share with friends
+            ShareWithFriendsCard(context)
+
             // Share net
             GlassCard(Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Wifi, null, tint = Lime, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Share connection", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text("Let a PC on the same hotspot/Wi-Fi use this tunnel", color = TextSecondary, fontSize = 12.sp)
+                        Text("Share connection", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, fontFamily = Poppins)
+                        Text("Let a PC on the same hotspot/Wi-Fi use this tunnel", color = TextSecondary, fontSize = 12.sp, fontFamily = Poppins)
                     }
                     Switch(
                         checked = share.enabled, onCheckedChange = { ShareNet.setEnabled(it) },
@@ -113,7 +116,7 @@ fun AccountScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("On your PC set a SOCKS5 proxy to:", color = TextSecondary, fontSize = 12.sp)
+                                Text("On your PC set a SOCKS5 proxy to:", color = TextSecondary, fontSize = 12.sp, fontFamily = Poppins)
                                 Text(proxy, color = Lime, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
                             }
                             Box(
@@ -126,7 +129,7 @@ fun AccountScreen(
                     } else {
                         Text(
                             "Connect the VPN, then share starts automatically. Your PC must be on this phone's hotspot or the same Wi-Fi.",
-                            color = TextSecondary, fontSize = 12.sp,
+                            color = TextSecondary, fontSize = 12.sp, fontFamily = Poppins,
                         )
                     }
                 }
@@ -142,7 +145,7 @@ fun AccountScreen(
 
             // Account key
             GlassCard(Modifier.fillMaxWidth()) {
-                Text("Access key", color = TextSecondary, fontSize = 12.sp)
+                Text("Access key", color = TextSecondary, fontSize = 12.sp, fontFamily = Poppins)
                 Text(mask(keyVal), color = TextPrimary, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
                 Spacer(Modifier.height(12.dp))
                 RowAction(Icons.Filled.Login, "Use a different key", "Sign out and enter another key") {
@@ -157,15 +160,15 @@ fun AccountScreen(
                     Icon(Icons.Filled.Shield, null, tint = Connected, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
                     Column {
-                        Text("Protected", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text("Root, tamper and traffic-capture checks are on", color = TextSecondary, fontSize = 12.sp)
+                        Text("Protected", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, fontFamily = Poppins)
+                        Text("Root, tamper and traffic-capture checks are on", color = TextSecondary, fontSize = 12.sp, fontFamily = Poppins)
                     }
                 }
             }
 
             Text(
                 "Jat Vpn ${BuildConfig.VERSION_NAME} · just another tunnel vpn",
-                color = TextSecondary.copy(alpha = 0.7f), fontSize = 11.sp,
+                color = TextSecondary.copy(alpha = 0.7f), fontSize = 11.sp, fontFamily = Poppins,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             )
             Spacer(Modifier.height(8.dp))
@@ -183,8 +186,8 @@ private fun RowAction(icon: androidx.compose.ui.graphics.vector.ImageVector, tit
             }
             Spacer(Modifier.width(12.dp))
             Column {
-                Text(title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                Text(subtitle, color = TextSecondary, fontSize = 12.sp)
+                Text(title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, fontFamily = Poppins)
+                Text(subtitle, color = TextSecondary, fontSize = 12.sp, fontFamily = Poppins)
             }
         }
     }

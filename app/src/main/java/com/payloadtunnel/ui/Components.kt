@@ -84,7 +84,7 @@ fun TopBar(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(title, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+        Text(title, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Medium, fontFamily = Poppins)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (left != null) left() else Spacer(Modifier.size(44.dp))
             Spacer(Modifier.weight(1f))
@@ -135,7 +135,7 @@ fun Pill(
                 Icon(icon, null, tint = iconTint, modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(6.dp))
             }
-            Text(text, color = textColor, fontSize = 12.sp, maxLines = 1)
+            Text(text, color = textColor, fontSize = 12.sp, maxLines = 1, fontFamily = Poppins)
         }
     }
     if (onClick != null) {
@@ -188,7 +188,7 @@ fun SignalBars(level: Int, modifier: Modifier = Modifier) {
 
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
-    Text(text, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = modifier)
+    Text(text, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = Poppins, modifier = modifier)
 }
 
 @Composable
@@ -218,6 +218,7 @@ fun PrimaryButton(
             androidx.compose.material3.Text(
                 text, color = OnLime.copy(alpha = alpha), fontSize = 16.sp,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                fontFamily = Poppins,
             )
         }
     }

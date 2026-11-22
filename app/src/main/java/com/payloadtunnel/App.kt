@@ -19,8 +19,14 @@ class App : Application() {
                     .apply { setShowBadge(false) },
             )
         }
-        runCatching { com.startapp.sdk.adsbase.StartAppSDK.init(this, Graph.session.effectiveStartAppId(), false) }
+        try {
+            com.startapp.sdk.adsbase.StartAppSDK.init(this, Graph.session.effectiveStartAppId(), false)
+        } catch (e: Exception) {
+            com.payloadtunnel.core.AppLog.dbg("StartApp init failed: ${e.message}")
+        }
         runCatching { com.startapp.sdk.adsbase.StartAppAd.disableSplash() }
+        runCatching { com.startapp.sdk.adsbase.StartAppAd.enableConsent(this, false) }
+        runCatching { com.startapp.sdk.adsbase.StartAppSDK.setTestAdsEnabled(false) }
     }
 
     companion object {

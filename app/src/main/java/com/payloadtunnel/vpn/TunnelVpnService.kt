@@ -354,6 +354,11 @@ class TunnelVpnService : VpnService() {
         scope.launch { closeConnections() }
     }
 
+    override fun onTaskRemoved(rootIntent: android.content.Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // Keep running in the background when the user swipes the app away.
+    }
+
     override fun onRevoke() {
         AppLog.dbg("VPN permission revoked")
         userStop()

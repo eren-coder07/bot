@@ -1,6 +1,10 @@
 package com.payloadtunnel.ui
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -8,6 +12,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -37,13 +45,16 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Wifi
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -65,6 +76,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.payloadtunnel.Graph
@@ -98,16 +110,38 @@ fun HomeScreen(
     val active = state.status.isActive
     val connected = state.status == Status.CONNECTED
 
-    // Local time countdown while connected (server syncs every ~30s).
-    var base by remember { mutableLongStateOf(sessionTime) }
-    var baseAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(sessionTime) { base = sessionTime; baseAt = System.currentTimeMillis() }
-    var tick by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(connected) { while (connected) { delay(1000); tick++ } }
-    val shownTime = if (connected) (base - (System.currentTimeMillis() - baseAt) / 1000).coerceAtLeast(0) else base
+    // Live countdown timer: decrement a local counter every second while connected.
+    var displayTime by remember { mutableLongStateOf(sessionTime) }
+    LaunchedEffect(sessionTime) { displayTime = sessionTime }
+    LaunchedEffect(connected) {
+        while (connected) {
+            delay(1000)
+            if (displayTime > 0) displayTime--
+        }
+    }
+    val shownTime = displayTime
     val outOfTime = shownTime <= 0
 
     var refreshing by remember { mutableStateOf(false) }
+
+    // Show Telegram dialog on first successful connection
+    var showTelegramDialog by remember { mutableStateOf(false) }
+    var hasShownTelegram by remember { mutableStateOf(
+        context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
+            .getBoolean("shown_telegram", false)
+    ) }
+    LaunchedEffect(connected) {
+        if (connected && !hasShownTelegram) {
+            showTelegramDialog = true
+            hasShownTelegram = true
+            context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
+                .edit().putBoolean("shown_telegram", true).apply()
+        }
+    }
+
+    if (showTelegramDialog) {
+        TelegramDialog(onDismiss = { showTelegramDialog = false })
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
@@ -120,7 +154,7 @@ fun HomeScreen(
         ) {
             CircleIconButton(Icons.Outlined.Menu, "Account", onOpenAccount)
             Spacer(Modifier.weight(1f))
-            Text("Jat Vpn", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            Text("Jat Vpn", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, fontFamily = Poppins)
             Spacer(Modifier.weight(1f))
             val spin = rememberInfiniteTransition(label = "r").animateFloat(
                 0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "s",
@@ -140,21 +174,29 @@ fun HomeScreen(
             )
         }
 
-        if (announcement.isNotBlank()) {
+        AnimatedVisibility(
+            visible = announcement.isNotBlank(),
+            enter = slideInVertically(tween(400)) { -it } + fadeIn(tween(400)),
+        ) {
             Box(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                     .clip(RoundedCornerShape(12.dp)).background(Lime.copy(alpha = 0.10f))
                     .border(1.dp, Lime.copy(alpha = 0.25f), RoundedCornerShape(12.dp)).padding(10.dp),
-            ) { Text(announcement, color = Lime, fontSize = 12.sp) }
+            ) { Text(announcement, color = Lime, fontSize = 12.sp, fontFamily = Poppins) }
         }
 
         Spacer(Modifier.height(8.dp))
-        // Time credit chip
-        TimeChip(shownTime, outOfTime, onWatchAd)
+        AnimatedVisibility(
+            visible = true,
+            enter = fadeIn(tween(600)) + scaleIn(tween(600), initialScale = 0.8f),
+        ) {
+            TimeChip(shownTime, outOfTime, onWatchAd)
+        }
         Spacer(Modifier.height(10.dp))
         StatusPill(state.status)
         state.message?.let {
             Text(it, color = if (state.status == Status.ERROR) Failed else TextSecondary, fontSize = 12.sp,
+                fontFamily = Poppins,
                 modifier = Modifier.padding(top = 4.dp, start = 24.dp, end = 24.dp))
         }
 
@@ -199,9 +241,13 @@ fun HomeScreen(
             ) {
                 Icon(Icons.Outlined.Wifi, null, tint = Lime, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Sharing · PC SOCKS5 ${share.address}:${share.port}", color = TextPrimary, fontSize = 12.sp)
+                Text("Sharing · PC SOCKS5 ${share.address}:${share.port}", color = TextPrimary, fontSize = 12.sp, fontFamily = Poppins)
             }
         }
+
+        // Share with friends card
+        Spacer(Modifier.height(14.dp))
+        ShareWithFriendsCard(context, Modifier.padding(horizontal = 16.dp))
 
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -210,6 +256,92 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(16.dp))
     }
+}
+
+@Composable
+private fun TelegramDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF151B10),
+        titleContentColor = TextPrimary,
+        textContentColor = TextSecondary,
+        icon = {
+            Box(
+                Modifier.size(56.dp).clip(CircleShape).background(Lime.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Filled.CheckCircle, null, tint = Connected, modifier = Modifier.size(32.dp)) }
+        },
+        title = { Text("Connected!", fontFamily = Poppins, fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "You're connected and protected. Join our Telegram channel for updates, support, and free keys!",
+                    fontFamily = Poppins, textAlign = TextAlign.Center,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/jatvpn"))
+                runCatching { context.startActivity(intent) }
+                onDismiss()
+            }) {
+                Text("Join @jatvpn", color = Lime, fontFamily = Poppins, fontWeight = FontWeight.SemiBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Later", color = TextSecondary, fontFamily = Poppins)
+            }
+        },
+    )
+}
+
+@Composable
+fun ShareWithFriendsCard(context: Context, modifier: Modifier = Modifier) {
+    GlassCard(
+        modifier.fillMaxWidth()
+            .clickable { shareWithFriends(context) },
+        highlighted = true,
+        padding = 14.dp,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(42.dp).clip(CircleShape).background(
+                    Brush.linearGradient(listOf(Lime, LimeDim))
+                ),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Filled.Share, null, tint = OnLime, modifier = Modifier.size(22.dp)) }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "شارك التطبيق مع 3 أصدقائك",
+                    color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, fontFamily = Poppins,
+                )
+                Text(
+                    "Share with 3 friends & get 24h free!",
+                    color = Lime, fontSize = 12.sp, fontFamily = Poppins,
+                )
+            }
+        }
+    }
+}
+
+private fun shareWithFriends(context: Context) {
+    val shareText = """
+Join me on Jat VPN - the fastest free VPN!
+
+انضم إلينا على Jat VPN - أسرع VPN مجاني!
+
+Download now & join our Telegram:
+https://t.me/jatvpn
+    """.trimIndent()
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, shareText)
+    }
+    runCatching { context.startActivity(Intent.createChooser(intent, "Share Jat VPN")) }
 }
 
 @Composable
@@ -224,7 +356,7 @@ private fun TimeChip(seconds: Long, outOfTime: Boolean, onAdd: () -> Unit) {
         Spacer(Modifier.width(8.dp))
         Text(
             if (outOfTime) "No time left" else "Time left  " + formatDuration(seconds * 1000),
-            color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+            color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = Poppins,
         )
         Spacer(Modifier.width(10.dp))
         Box(
@@ -253,6 +385,7 @@ private fun PowerButton(status: Status, enabled: Boolean, onClick: () -> Unit) {
     val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(if (busy) 2500 else 30000, easing = LinearEasing)), label = "spin")
     val pulse by transition.animateFloat(0.85f, 1f, infiniteRepeatable(tween(1400), RepeatMode.Reverse), label = "pulse")
     val glow by animateFloatAsState(if (connected) 1f else if (busy) 0.6f else 0.22f, tween(600), label = "glow")
+    val buttonScale by animateFloatAsState(if (connected) 1.05f else 1f, tween(500), label = "scale")
 
     Box(Modifier.size(260.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
@@ -275,7 +408,9 @@ private fun PowerButton(status: Status, enabled: Boolean, onClick: () -> Unit) {
         val fill = if (connected) Lime else if (busy) Lime.copy(alpha = 0.75f) else Color(0xFF263019)
         val fg = if (connected || busy) OnLime else Lime
         Box(
-            Modifier.size(140.dp).clip(CircleShape)
+            Modifier.size(140.dp)
+                .graphicsLayer { scaleX = buttonScale; scaleY = buttonScale }
+                .clip(CircleShape)
                 .background(if (connected || busy) Brush.radialGradient(listOf(Color(0xFFE6FF6B), fill)) else Brush.radialGradient(listOf(Color(0xFF34421F), fill)))
                 .border(2.dp, Lime.copy(alpha = if (connected) 0f else 0.5f), CircleShape)
                 .clickable(remember { MutableInteractionSource() }, indication = null, enabled = enabled, onClick = onClick),
@@ -291,7 +426,7 @@ private fun PowerButton(status: Status, enabled: Boolean, onClick: () -> Unit) {
                         busy -> "Cancel"
                         else -> "Connect"
                     },
-                    color = fg, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                    color = fg, fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = Poppins,
                 )
             }
         }
@@ -307,8 +442,8 @@ private fun MiniStat(icon: ImageVector, label: String, speed: String, total: Str
             }
             Spacer(Modifier.width(10.dp))
             Column {
-                Text(speed, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Text("$label · $total", color = TextSecondary, fontSize = 11.sp, maxLines = 1)
+                Text(speed, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = Poppins)
+                Text("$label · $total", color = TextSecondary, fontSize = 11.sp, maxLines = 1, fontFamily = Poppins)
             }
         }
     }

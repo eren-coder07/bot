@@ -1,7 +1,14 @@
 package com.payloadtunnel.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -66,12 +73,24 @@ fun MainScaffold(
         if (tab != Tab.VPN) BackHandler { tab = Tab.VPN }
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f)) {
-                when (tab) {
-                    Tab.VPN -> HomeScreen(traffic, onConnect, onDisconnect, onRefresh, onWatchAd, adLoading) { account = true }
-                    Tab.SPEED -> SpeedScreen(traffic) { tab = Tab.VPN }
-                    Tab.LOGS -> LogScreen()
+                AnimatedContent(
+                    targetState = tab,
+                    transitionSpec = {
+                        val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                        (slideInHorizontally(tween(300)) { dir * it / 4 } + fadeIn(tween(300)))
+                            .togetherWith(slideOutHorizontally(tween(300)) { -dir * it / 4 } + fadeOut(tween(300)))
+                    },
+                    label = "tab",
+                ) { currentTab ->
+                    when (currentTab) {
+                        Tab.VPN -> HomeScreen(traffic, onConnect, onDisconnect, onRefresh, onWatchAd, adLoading) { account = true }
+                        Tab.SPEED -> SpeedScreen(traffic) { tab = Tab.VPN }
+                        Tab.LOGS -> LogScreen()
+                    }
                 }
             }
+            // Banner ad above bottom bar
+            BannerAd(Modifier.fillMaxWidth())
             BottomBar(tab) { tab = it }
         }
     }
@@ -97,7 +116,7 @@ private fun BottomBar(selected: Tab, onSelect: (Tab) -> Unit) {
                         contentAlignment = Alignment.Center,
                     ) { Icon(t.icon, t.label, tint = if (active) Lime else TextSecondary, modifier = Modifier.size(20.dp)) }
                     Spacer(Modifier.height(2.dp))
-                    Text(t.label, color = if (active) Lime else TextSecondary, fontSize = 11.sp)
+                    Text(t.label, color = if (active) Lime else TextSecondary, fontSize = 11.sp, fontFamily = Poppins)
                 }
             }
         }
