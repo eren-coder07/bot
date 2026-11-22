@@ -206,7 +206,7 @@ fun HomeScreen(
                     InfoRow("User", selected.username)
                     val port = if (state.status == Status.CONNECTED && state.socksPort > 0) state.socksPort else selected.localSocksPort
                     InfoRow("SOCKS5", "127.0.0.1:$port")
-                    InfoRow("DNS", selected.dnsServers.joinToString())
+                    InfoRow("DNS", if (selected.remoteDns) "Remote (SSH server)" else selected.dnsServers.joinToString())
                     state.serverVersion?.takeIf { state.status == Status.CONNECTED }?.let { InfoRow("Server", it) }
                 }
             }

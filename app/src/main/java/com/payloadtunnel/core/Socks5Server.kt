@@ -1,6 +1,5 @@
 package com.payloadtunnel.core
 
-import android.util.Log
 import java.io.DataInputStream
 import java.io.IOException
 import java.io.InputStream
@@ -40,6 +39,8 @@ class Socks5Server(private val ssh: SshConnection) {
     private val running = AtomicBoolean(false)
     private val udpDropWarned = AtomicBoolean(false)
     private val failedConnects = AtomicInteger(0)
+    private val dnsFailures = AtomicInteger(0)
+    private val dnsOk = AtomicBoolean(false)
 
     var port: Int = 0
         private set
@@ -137,6 +138,12 @@ class Socks5Server(private val ssh: SshConnection) {
     }
 
     private fun handleConnect(client: Socket, input: InputStream, output: OutputStream, host: String, port: Int) {
+        if (isLocalTunAddress(host)) {
+            // e.g. Android probing DNS-over-TLS on the built-in DNS address: refuse at once.
+            runCatching { reply(output, 5) }
+            closeQuietly(client)
+            return
+        }
         val channel = try {
             ssh.openDirect(host, port)
         } catch (e: Exception) {
@@ -265,9 +272,14 @@ class Socks5Server(private val ssh: SshConnection) {
             out.flush()
             val din = DataInputStream(channel.input)
             val len = din.readUnsignedShort()
-            ByteArray(len).also { din.readFully(it) }
+            val answer = ByteArray(len).also { din.readFully(it) }
+            if (dnsOk.compareAndSet(false, true)) AppLog.ok("DNS through the tunnel works ($server over TCP)")
+            answer
         } catch (e: Exception) {
-            Log.d("Socks5", "DNS via $server failed: ${e.message}")
+            val n = dnsFailures.incrementAndGet()
+            if (n <= 3 || n % 100 == 0) {
+                AppLog.w("DNS query to $server:53 through SSH failed (${e.message ?: e.javaClass.simpleName})")
+            }
             null
         } finally {
             watchdog.cancel(false)
@@ -318,6 +330,15 @@ class Socks5Server(private val ssh: SshConnection) {
         } catch (_: SocketException) {
         } catch (_: IOException) {
         }
+    }
+
+    /** 198.18.0.0/15 is the TUN's own range (interface + built-in DNS). */
+    private fun isLocalTunAddress(host: String): Boolean {
+        val parts = host.split('.')
+        if (parts.size != 4) return false
+        val a = parts[0].toIntOrNull() ?: return false
+        val b = parts[1].toIntOrNull() ?: return false
+        return a == 198 && (b == 18 || b == 19)
     }
 
     companion object {

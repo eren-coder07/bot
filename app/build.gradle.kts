@@ -41,7 +41,9 @@ android {
                     "-DPKGNAME=com/payloadtunnel/vpn",
                     "-DCLSNAME=TProxyNative",
                 )
-                arguments += listOf("APP_PLATFORM=android-24", "REV_ID=2.9.3")
+                arguments += listOf("APP_PLATFORM=android-24", "REV_ID=2.20.0")
+                // Only the JNI library; upstream's Android.mk also defines a CLI executable.
+                targets += "hev-socks5-tunnel"
             }
         }
     }

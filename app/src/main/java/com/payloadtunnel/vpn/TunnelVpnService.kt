@@ -40,7 +40,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
-import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.Socket
 
@@ -191,7 +190,7 @@ class TunnelVpnService : VpnService() {
         AppLog.ok("SOCKS5 proxy started on 127.0.0.1:$port (dynamic forward over SSH)")
 
         if (tun == null) establishVpn(p)
-        if (!hevRunning || hevPort != port) startTun2Socks(port)
+        if (!hevRunning || hevPort != port) startTun2Socks(port, p.remoteDns)
 
         TunnelStatus.update {
             it.copy(
@@ -210,28 +209,28 @@ class TunnelVpnService : VpnService() {
             .setMtu(MTU)
             .addAddress(TUN_IPV4, 32)
             .addRoute("0.0.0.0", 0)
-        try {
-            builder.addAddress(TUN_IPV6, 128)
-            builder.addRoute("::", 0)
-        } catch (e: Exception) {
-            AppLog.w("IPv6 not available on this device: ${e.message}")
-        }
+        // No IPv6 address/route: Android then blocks IPv6 for tunnelled apps, so they fail
+        // fast and use IPv4 instead of hanging on IPv6 the SSH server usually cannot reach.
 
-        val dnsList = p.dnsServers.ifEmpty { listOf("1.1.1.1", "8.8.8.8") }
         val usedDns = mutableListOf<String>()
-        for (d in dnsList) {
-            try {
-                val addr = InetAddress.getByName(d) // only literal IPs are accepted below
-                if (addr.hostAddress != d && addr !is Inet6Address) throw IllegalArgumentException("not an IP")
-                builder.addDnsServer(addr)
-                usedDns += d
-            } catch (e: Exception) {
-                AppLog.w("Ignoring invalid DNS server \"$d\" (must be an IP address)")
+        if (p.remoteDns) {
+            builder.addDnsServer(MAPDNS_IP)
+            usedDns += "remote (resolved by SSH server)"
+        } else {
+            for (d in p.dnsServers) {
+                try {
+                    if (!d.matches(Regex("[0-9.]+"))) throw IllegalArgumentException("not an IPv4 address")
+                    builder.addDnsServer(InetAddress.getByName(d))
+                    usedDns += d
+                } catch (e: Exception) {
+                    AppLog.w("Ignoring invalid DNS server \"$d\" (must be an IPv4 address)")
+                }
             }
-        }
-        if (usedDns.isEmpty()) {
-            builder.addDnsServer("1.1.1.1")
-            usedDns += "1.1.1.1"
+            if (usedDns.isEmpty()) {
+                builder.addDnsServer("1.1.1.1")
+                usedDns += "1.1.1.1"
+            }
+            usedDns[usedDns.size - 1] = usedDns.last() + " (over TCP through SSH)"
         }
 
         val appsDesc = applyAppFilter(builder, settings.appFilterMode, settings.selectedApps)
@@ -278,31 +277,17 @@ class TunnelVpnService : VpnService() {
         return "all apps"
     }
 
-    private fun startTun2Socks(port: Int) {
+    private fun startTun2Socks(port: Int, remoteDns: Boolean) {
         val fd = tun ?: return
         if (hevRunning) {
             TProxyNative.TProxyStopService()
             hevRunning = false
         }
         val config = File(cacheDir, "tun2socks.yml")
-        config.writeText(
-            """
-            |tunnel:
-            |  mtu: $MTU
-            |  ipv4: $TUN_IPV4
-            |  ipv6: '$TUN_IPV6'
-            |socks5:
-            |  port: $port
-            |  address: 127.0.0.1
-            |  udp: 'udp'
-            |misc:
-            |  task-stack-size: 81920
-            |  connect-timeout: 10000
-            |  read-write-timeout: 300000
-            |  log-level: warn
-            |""".trimMargin(),
-        )
-        TProxyNative.TProxyStartService(config.absolutePath, fd.fd)
+        config.writeText(tun2socksConfig(port, remoteDns))
+        if (!TProxyNative.TProxyStartService(config.absolutePath, fd.fd)) {
+            throw IllegalStateException("tun2socks failed to start")
+        }
         hevRunning = true
         hevPort = port
         AppLog.ok("tun2socks running: all TUN traffic → SOCKS5 127.0.0.1:$port")
@@ -443,7 +428,34 @@ class TunnelVpnService : VpnService() {
         private const val NOTIF_ID = 1
         private const val MTU = 8500
         private const val TUN_IPV4 = "198.18.0.1"
-        private const val TUN_IPV6 = "fc00::1"
+        private const val MAPDNS_IP = "198.18.0.2"
+
+        /** hev-socks5-tunnel configuration (YAML). */
+        fun tun2socksConfig(socksPort: Int, remoteDns: Boolean): String = buildString {
+            appendLine("tunnel:")
+            appendLine("  mtu: $MTU")
+            appendLine("  ipv4: $TUN_IPV4")
+            appendLine("socks5:")
+            appendLine("  port: $socksPort")
+            appendLine("  address: 127.0.0.1")
+            appendLine("  udp: 'udp'")
+            if (remoteDns) {
+                // Built-in DNS answers with placeholder IPs from 100.64.0.0/10 and sends the
+                // real host name in the SOCKS5 request, so the SSH server resolves it.
+                appendLine("mapdns:")
+                appendLine("  address: $MAPDNS_IP")
+                appendLine("  port: 53")
+                appendLine("  network: 100.64.0.0")
+                appendLine("  netmask: 255.192.0.0")
+                appendLine("  cache-size: 10000")
+            }
+            appendLine("misc:")
+            appendLine("  task-stack-size: 81920")
+            appendLine("  connect-timeout: 15000")
+            appendLine("  tcp-read-write-timeout: 300000")
+            appendLine("  udp-read-write-timeout: 60000")
+            appendLine("  log-level: warn")
+        }
 
         fun connect(context: Context, profileId: String) {
             val i = Intent(context, TunnelVpnService::class.java)

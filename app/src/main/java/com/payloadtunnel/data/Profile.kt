@@ -32,8 +32,13 @@ data class Profile(
     val proxy: String = "",
     val payload: String = "",
     val localSocksPort: Int = 1080,
-    /** Comma / space separated list of DNS server IPs. */
+    /** Comma / space separated list of DNS server IPs (used when [remoteDns] is off). */
     val dns: String = DEFAULT_DNS,
+    /**
+     * Let the SSH server resolve host names (like "ssh -D" with remote DNS). The phone gets
+     * placeholder IPs from the built-in DNS and the real host name is sent in each SOCKS request.
+     */
+    val remoteDns: Boolean = true,
 ) {
     val proxyHost: String?
         get() = parseHostPort(proxy)?.first
@@ -56,6 +61,7 @@ data class Profile(
         put("payload", payload)
         put("localSocksPort", localSocksPort)
         put("dns", dns)
+        put("remoteDns", remoteDns)
     }
 
     companion object {
@@ -80,6 +86,7 @@ data class Profile(
                 payload = o.optString("payload"),
                 localSocksPort = o.optInt("localSocksPort", 1080),
                 dns = o.optString("dns", DEFAULT_DNS).ifBlank { DEFAULT_DNS },
+                remoteDns = o.optBoolean("remoteDns", true),
             )
         }
 

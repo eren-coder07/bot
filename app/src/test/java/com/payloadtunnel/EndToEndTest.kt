@@ -105,6 +105,16 @@ class EndToEndTest {
             stalled.close()
         }
 
+        // Optional: drive a real TUN through tun2socks (Linux, root) with a script.
+        env("E2E_TUN_SCRIPT")?.let { script ->
+            val pb = ProcessBuilder("bash", script).redirectErrorStream(true)
+            pb.environment()["SOCKS_PORT"] = port.toString()
+            val proc = pb.start()
+            val out = proc.inputStream.readBytes().toString(Charsets.UTF_8)
+            println(out)
+            assertEquals(out + "\nAPP LOG:\n" + com.payloadtunnel.core.AppLog.asText(), 0, proc.waitFor())
+        }
+
         socks.stop()
         ssh.close()
         blocker.close()

@@ -1,5 +1,6 @@
 package com.payloadtunnel.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -35,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
@@ -62,6 +65,7 @@ fun ProfileEditor(initial: Profile, onSave: (Profile) -> Unit, onCancel: () -> U
     var payload by remember { mutableStateOf(TextFieldValue(initial.payload)) }
     var socksPort by remember { mutableStateOf(initial.localSocksPort.toString()) }
     var dns by remember { mutableStateOf(initial.dns) }
+    var remoteDns by remember { mutableStateOf(initial.remoteDns) }
     var attempted by remember { mutableStateOf(false) }
 
     val portOk = port.toIntOrNull() in 1..65535
@@ -78,6 +82,7 @@ fun ProfileEditor(initial: Profile, onSave: (Profile) -> Unit, onCancel: () -> U
                 username = user.trim(), password = pass, mode = mode, proxy = proxy.trim(),
                 payload = payload.text, localSocksPort = socksPort.toInt(),
                 dns = dns.trim().ifEmpty { Profile.DEFAULT_DNS },
+                remoteDns = remoteDns,
             ),
         )
     }
@@ -188,9 +193,23 @@ fun ProfileEditor(initial: Profile, onSave: (Profile) -> Unit, onCancel: () -> U
                 supportingText = { Text("If busy, a free port is picked automatically") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             )
+            Row(
+                Modifier.fillMaxWidth().clickable { remoteDns = !remoteDns }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Remote DNS (recommended)")
+                    Text(
+                        "The SSH server resolves host names. Turn off to use the DNS servers below over the tunnel.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = remoteDns, onCheckedChange = { remoteDns = it })
+            }
             OutlinedTextField(
                 dns, { dns = it }, label = { Text("DNS servers") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                supportingText = { Text("Comma separated IPs, resolved through the tunnel") },
+                enabled = !remoteDns,
+                supportingText = { Text("Comma separated IPv4 addresses, queried over TCP through SSH") },
             )
             Spacer(Modifier.height(80.dp))
         }
