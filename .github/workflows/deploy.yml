@@ -1,0 +1,44 @@
+name: Deploy to VPS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy server over SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
+        run: |
+          set -e
+          if [ -z "$VPS_SSH_KEY" ] || [ -z "$VPS_HOST" ]; then
+            echo "::error::Missing VPS_SSH_KEY or VPS_HOST secret"; exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/key
+          chmod 600 ~/.ssh/key
+          USER="${VPS_USER:-root}"; PORT="${VPS_PORT:-22}"
+          OPT="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25"
+          echo "Connecting to $USER@$VPS_HOST:$PORT …"
+          ssh $OPT -p "$PORT" -i ~/.ssh/key "$USER@$VPS_HOST" 'mkdir -p /opt/jatvpn && rm -rf /opt/jatvpn/server'
+          scp $OPT -P "$PORT" -i ~/.ssh/key -r server "$USER@$VPS_HOST:/opt/jatvpn/server"
+          ssh $OPT -p "$PORT" -i ~/.ssh/key "$USER@$VPS_HOST" \
+            "APP_SECRET='$APP_SECRET' ADMIN_PASSWORD='$ADMIN_PASSWORD' BOOTSTRAP_KEY='$BOOTSTRAP_KEY' bash /opt/jatvpn/server/remote_setup.sh"
+          echo "Done."
