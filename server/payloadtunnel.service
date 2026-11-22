@@ -1,0 +1,17 @@
+# Systemd unit. Put the server in /opt/payloadtunnel and a venv in /opt/payloadtunnel/venv.
+# Then: cp payloadtunnel.service /etc/systemd/system/ && systemctl enable --now payloadtunnel
+[Unit]
+Description=Payload Tunnel control server
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/payloadtunnel/server
+EnvironmentFile=/opt/payloadtunnel/server/.env
+ExecStart=/opt/payloadtunnel/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
