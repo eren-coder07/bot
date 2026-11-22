@@ -126,7 +126,8 @@ class MainActivity : ComponentActivity() {
     private fun validate(p: Profile): String? = when {
         p.sshHost.isBlank() -> "SSH host is empty"
         p.sshPort !in 1..65535 -> "SSH port is invalid"
-        p.username.isBlank() -> "SSH username is empty"
+        p.mode.isSsh && p.username.isBlank() -> "SSH username is empty"
+        p.mode.isVless && runCatching { java.util.UUID.fromString(p.vlessUuid.trim()) }.isFailure -> "VLESS UUID is invalid"
         p.mode.usesProxy && p.proxy.isNotBlank() && Profile.parseHostPort(p.proxy) == null ->
             "Remote proxy must be host:port"
         else -> null

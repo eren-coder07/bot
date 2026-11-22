@@ -17,12 +17,15 @@ import java.io.OutputStream
 import java.net.Socket
 
 /** Step 3: SSH over the already-negotiated socket (JSch with a custom socket factory). */
-class SshConnection private constructor(private val session: Session) {
+class SshConnection private constructor(private val session: Session) : Upstream {
 
-    val isConnected: Boolean get() = session.isConnected
+    override val isConnected: Boolean get() = session.isConnected
+    override val description: String get() = "SSH " + (serverVersion ?: "")
     val serverVersion: String? get() = runCatching { session.serverVersion }.getOrNull()
 
     /** Opens a direct-tcpip channel (what "ssh -D" does for each SOCKS request). */
+    override fun open(host: String, port: Int, timeoutMs: Int): StreamChannel = openDirect(host, port, timeoutMs)
+
     fun openDirect(host: String, port: Int, timeoutMs: Int = 15_000): DirectChannel {
         val ch = session.openChannel("direct-tcpip") as ChannelDirectTCPIP
         ch.setHost(host)
@@ -42,7 +45,7 @@ class SshConnection private constructor(private val session: Session) {
         return DirectChannel(ch, input, output)
     }
 
-    fun close() {
+    override fun close() {
         runCatching { session.disconnect() }
     }
 
@@ -147,8 +150,12 @@ class SshConnection private constructor(private val session: Session) {
     }
 }
 
-class DirectChannel(private val channel: ChannelDirectTCPIP, val input: InputStream, val output: OutputStream) {
-    fun close() {
+class DirectChannel(
+    private val channel: ChannelDirectTCPIP,
+    override val input: InputStream,
+    override val output: OutputStream,
+) : StreamChannel {
+    override fun close() {
         runCatching { input.close() }
         runCatching { channel.disconnect() }
     }

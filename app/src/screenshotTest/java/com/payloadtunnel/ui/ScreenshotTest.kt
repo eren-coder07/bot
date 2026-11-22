@@ -28,13 +28,12 @@ class ScreenshotTest {
     private fun setup(connected: Boolean) {
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
         Graph.init(app)
-        if (Graph.profiles.profiles.value.size < 4) {
-            Graph.profiles.save(Profile(name = "Germany Fast", sshHost = "de1.example.com", sshPort = 443))
-            Graph.profiles.save(Profile(name = "Singapore", sshHost = "sg.example.com", sshPort = 80, proxy = "proxy.sg:8080"))
-            Graph.profiles.save(Profile(name = "US West", sshHost = "us.example.com", sshPort = 22))
+        if (Graph.profiles.profiles.value.none { it.name == "My server" }) {
+            Graph.profiles.save(Profile(name = "My server", sshHost = "de1.example.com", sshPort = 443))
         }
+        Graph.profiles.select("freevip-iam6-ip10")
         TunnelStatus.update {
-            if (connected) TunnelState(Status.CONNECTED, profileName = "rifi tech win*6", connectedAt = System.currentTimeMillis() - 2_936_000, socksPort = 1080, pingMs = 167)
+            if (connected) TunnelState(Status.CONNECTED, profileName = "IAM*6 IP 10", connectedAt = System.currentTimeMillis() - 2_936_000, socksPort = 1080, pingMs = 167)
             else TunnelState()
         }
     }

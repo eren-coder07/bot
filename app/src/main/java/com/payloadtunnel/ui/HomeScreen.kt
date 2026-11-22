@@ -133,23 +133,40 @@ fun HomeScreen(
             MiniStat(Icons.Filled.ArrowUpward, "Upload", if (active) formatSpeed(traffic.upSpeed) else "0 B/s", formatBytes(traffic.up), Modifier.weight(1f))
         }
 
-        Spacer(Modifier.height(14.dp))
-        // Server cards
+        // Variant dropdown for grouped servers (e.g. "Free Vip")
+        val entries = remember(profiles) { Graph.profiles.entries(profiles) }
+        val selectedEntry = entries.firstOrNull { e -> e.any { it.id == selected?.id } }
+        if (selectedEntry != null && selectedEntry.first().group.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            VariantPicker(
+                variants = selectedEntry,
+                selectedId = selected?.id,
+                enabled = !active,
+                onSelect = { Graph.profiles.select(it.id) },
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        // Server cards: one per group or ungrouped server
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            items(profiles, key = { it.id }) { p ->
+            items(entries, key = { it.first().group.ifBlank { it.first().id } }) { entry ->
+                val isSel = entry === selectedEntry
+                val shown = if (isSel) selected!! else entry.first()
                 ServerCard(
-                    profile = p,
-                    isSelected = p.id == selected?.id,
-                    isActive = active && p.id == selected?.id,
+                    title = entry.first().group.ifBlank { shown.name },
+                    subtitle = if (entry.size > 1) "${entry.size} configs · ${if (isSel) shown.name else "tap to choose"}" else shown.mode.label,
+                    isSelected = isSel,
+                    isActive = active && isSel,
                     locked = active,
-                    onSelect = { Graph.profiles.select(p.id) },
+                    onSelect = { Graph.profiles.selectEntry(entry) },
                     onConnect = {
-                        Graph.profiles.select(p.id)
-                        onConnect(p)
+                        Graph.profiles.selectEntry(entry)
+                        Graph.profiles.selected()?.let(onConnect)
                     },
                 )
             }
@@ -261,7 +278,8 @@ private fun MiniStat(icon: androidx.compose.ui.graphics.vector.ImageVector, labe
 
 @Composable
 private fun ServerCard(
-    profile: Profile,
+    title: String,
+    subtitle: String,
     isSelected: Boolean,
     isActive: Boolean,
     locked: Boolean,
@@ -269,11 +287,11 @@ private fun ServerCard(
     onConnect: () -> Unit,
 ) {
     GlassCard(
-        Modifier.width(158.dp).clickable(enabled = !locked, onClick = onSelect),
+        Modifier.width(176.dp).clickable(enabled = !locked, onClick = onSelect),
         highlighted = isSelected,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ProfileAvatar(profile.name, 34.dp)
+            ProfileAvatar(title, 34.dp)
             Spacer(Modifier.weight(1f))
             Pill(
                 if (isActive) "Active" else "Connect",
@@ -284,9 +302,9 @@ private fun ServerCard(
             )
         }
         Spacer(Modifier.height(18.dp))
-        Text(profile.mode.label, color = TextSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(subtitle, color = TextSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
-            profile.name, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+            title, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
     }

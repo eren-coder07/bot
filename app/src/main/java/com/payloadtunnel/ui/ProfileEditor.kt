@@ -64,12 +64,18 @@ fun ProfileEditor(initial: Profile, onSave: (Profile) -> Unit, onCancel: () -> U
     var socksPort by remember { mutableStateOf(initial.localSocksPort.toString()) }
     var dns by remember { mutableStateOf(initial.dns) }
     var remoteDns by remember { mutableStateOf(initial.remoteDns) }
+    var group by remember { mutableStateOf(initial.group) }
+    var sni by remember { mutableStateOf(initial.sni) }
+    var uuid by remember { mutableStateOf(initial.vlessUuid) }
+    var wsPath by remember { mutableStateOf(initial.wsPath) }
+    var wsHost by remember { mutableStateOf(initial.wsHost) }
     var attempted by remember { mutableStateOf(false) }
 
     val portOk = port.toIntOrNull() in 1..65535
     val socksOk = socksPort.toIntOrNull() in 1..65535
     val proxyOk = proxy.isBlank() || Profile.parseHostPort(proxy) != null
-    val valid = name.isNotBlank() && host.isNotBlank() && portOk && socksOk && proxyOk
+    val uuidOk = !mode.isVless || runCatching { java.util.UUID.fromString(uuid.trim()) }.isSuccess
+    val valid = name.isNotBlank() && host.isNotBlank() && portOk && socksOk && proxyOk && uuidOk
 
     fun save() {
         attempted = true
@@ -81,6 +87,8 @@ fun ProfileEditor(initial: Profile, onSave: (Profile) -> Unit, onCancel: () -> U
                 payload = payload.text, localSocksPort = socksPort.toInt(),
                 dns = dns.trim().ifEmpty { Profile.DEFAULT_DNS },
                 remoteDns = remoteDns,
+                group = group.trim(), sni = sni.trim(), vlessUuid = uuid.trim(),
+                wsPath = wsPath.trim().ifEmpty { "/" }, wsHost = wsHost.trim(),
             ),
         )
     }
@@ -115,10 +123,16 @@ fun ProfileEditor(initial: Profile, onSave: (Profile) -> Unit, onCancel: () -> U
                 }
             }
 
-            Section("SSH server")
+            OutlinedTextField(
+                group, { group = it }, label = { Text("Group (optional)") }, singleLine = true,
+                supportingText = { Text("Servers with the same group show as one entry with a config dropdown") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Section(if (mode.isVless) "VLESS server" else "SSH server")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    host, { host = it }, label = { Text("SSH host") }, singleLine = true,
+                    host, { host = it }, label = { Text(if (mode.isVless) "Server address" else "SSH host") }, singleLine = true,
                     isError = attempted && host.isBlank(), modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
@@ -128,8 +142,27 @@ fun ProfileEditor(initial: Profile, onSave: (Profile) -> Unit, onCancel: () -> U
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
             }
-            OutlinedTextField(user, { user = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(
+            if (mode.usesTls) {
+                OutlinedTextField(
+                    sni, { sni = it }, label = { Text("TLS SNI (server name)") }, singleLine = true,
+                    placeholder = { Text(host.ifBlank { "google.com" }) },
+                    supportingText = { Text("Empty = server address. Certificates are not verified.") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (mode.isVless) {
+                OutlinedTextField(
+                    uuid, { uuid = it }, label = { Text("UUID") }, singleLine = true, isError = attempted && !uuidOk,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(wsPath, { wsPath = it }, label = { Text("WebSocket path") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    wsHost, { wsHost = it }, label = { Text("WebSocket Host header") }, singleLine = true,
+                    supportingText = { Text("Empty = SNI") }, modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (!mode.isVless) OutlinedTextField(user, { user = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            if (!mode.isVless) OutlinedTextField(
                 pass, { pass = it }, label = { Text("Password") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 visualTransformation = if (showPass) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),

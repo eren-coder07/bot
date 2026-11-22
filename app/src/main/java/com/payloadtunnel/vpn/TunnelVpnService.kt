@@ -25,6 +25,8 @@ import com.payloadtunnel.core.SshConnection
 import com.payloadtunnel.core.Status
 import com.payloadtunnel.core.TunnelState
 import com.payloadtunnel.core.TunnelStatus
+import com.payloadtunnel.core.Upstream
+import com.payloadtunnel.core.VlessUpstream
 import com.payloadtunnel.data.AppFilterMode
 import com.payloadtunnel.data.Profile
 import com.payloadtunnel.ui.MainActivity
@@ -49,7 +51,7 @@ class TunnelVpnService : VpnService() {
     private var job: Job? = null
     private var notifJob: Job? = null
 
-    @Volatile private var ssh: SshConnection? = null
+    @Volatile private var ssh: Upstream? = null
     @Volatile private var socks: Socks5Server? = null
     @Volatile private var pendingSocket: Socket? = null
     @Volatile private var stopRequested = false
@@ -123,8 +125,8 @@ class TunnelVpnService : VpnService() {
                     delay(1000)
                 }
                 if (stopRequested) break
-                AppLog.w("SSH connection lost")
-                lastError = "SSH connection lost"
+                AppLog.w("Connection lost")
+                lastError = "Connection lost"
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -164,34 +166,44 @@ class TunnelVpnService : VpnService() {
         TunnelStatus.update { it.copy(status = Status.CONNECTING, message = null, profileName = p.name) }
         updateNotification()
 
-        val prepared = ProxyHandshake(
-            profile = p,
-            userAgent = userAgent(),
-            protect = { protect(it) },
-            onSendingPayload = {
-                TunnelStatus.set(Status.SENDING_PAYLOAD)
-                updateNotification()
-            },
-            register = { pendingSocket = it },
-        ).open()
-        if (stopRequested) {
-            runCatching { prepared.socket.close() }
-            return
-        }
+        val conn: Upstream
+        if (p.mode.isVless) {
+            TunnelStatus.set(Status.AUTHENTICATING)
+            updateNotification()
+            conn = VlessUpstream.connect(p, protect = { protect(it) })
+            ssh = conn
+            if (stopRequested) return
+        } else {
+            val prepared = ProxyHandshake(
+                profile = p,
+                userAgent = userAgent(),
+                protect = { protect(it) },
+                onSendingPayload = {
+                    TunnelStatus.set(Status.SENDING_PAYLOAD)
+                    updateNotification()
+                },
+                register = { pendingSocket = it },
+            ).open()
+            if (stopRequested) {
+                runCatching { prepared.socket.close() }
+                return
+            }
 
-        TunnelStatus.set(Status.AUTHENTICATING)
-        updateNotification()
-        AppLog.i("Starting SSH session, authenticating as \"${p.username}\"")
-        val conn = SshConnection.connect(p, prepared)
-        pendingSocket = null
-        ssh = conn
-        AppLog.ok("SSH authenticated (server: ${conn.serverVersion ?: "unknown"})")
-        if (stopRequested) return
+            TunnelStatus.set(Status.AUTHENTICATING)
+            updateNotification()
+            AppLog.i("Starting SSH session, authenticating as \"${p.username}\"")
+            val sshConn = SshConnection.connect(p, prepared)
+            pendingSocket = null
+            ssh = sshConn
+            conn = sshConn
+            AppLog.ok("SSH authenticated (server: ${sshConn.serverVersion ?: "unknown"})")
+            if (stopRequested) return
+        }
 
         val server = Socks5Server(conn)
         val port = server.start(p.localSocksPort)
         socks = server
-        AppLog.ok("SOCKS5 proxy started on 127.0.0.1:$port (dynamic forward over SSH)")
+        AppLog.ok("SOCKS5 proxy started on 127.0.0.1:$port (forwarding over ${if (p.mode.isVless) "VLESS" else "SSH"})")
 
         if (tun == null) establishVpn(p)
         if (!hevRunning || hevPort != port) startTun2Socks(port, p.remoteDns)
@@ -199,7 +211,7 @@ class TunnelVpnService : VpnService() {
         TunnelStatus.update {
             it.copy(
                 status = Status.CONNECTED, message = null, connectedAt = System.currentTimeMillis(),
-                socksPort = port, serverVersion = conn.serverVersion, pingMs = -1,
+                socksPort = port, serverVersion = conn.description, pingMs = -1,
             )
         }
         AppLog.ok("Connected ✔")
@@ -212,7 +224,7 @@ class TunnelVpnService : VpnService() {
         scope.launch {
             val t0 = System.nanoTime()
             val ms = try {
-                conn.openDirect("1.1.1.1", 53, 5_000).close()
+                conn.open("1.1.1.1", 53, 5_000).close()
                 (System.nanoTime() - t0) / 1_000_000
             } catch (e: Exception) {
                 -1L

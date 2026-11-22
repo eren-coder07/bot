@@ -3,16 +3,29 @@ package com.payloadtunnel.data
 import org.json.JSONObject
 import java.util.UUID
 
-enum class TunnelMode(val label: String, val usesProxy: Boolean, val usesPayload: Boolean) {
+enum class TunnelMode(
+    val label: String,
+    val usesProxy: Boolean,
+    val usesPayload: Boolean,
+    val usesTls: Boolean = false,
+    val isVless: Boolean = false,
+) {
     SSH_DIRECT("SSH Direct", false, false),
     SSH_PAYLOAD("SSH-Payload", false, true),
     SSH_PROXY_PAYLOAD("SSH-Proxy-Payload", true, true),
-    SSH_PROXY("SSH-Proxy (HTTP CONNECT)", true, true);
+    SSH_PROXY("SSH-Proxy (HTTP CONNECT)", true, true),
+    SSH_TLS("SSH-TLS", false, false, usesTls = true),
+    SSH_TLS_PAYLOAD("SSH-TLS-Payload", false, true, usesTls = true),
+    VLESS_WS_TLS("VLESS-WS-TLS", false, false, usesTls = true, isVless = true);
+
+    val isSsh: Boolean get() = !isVless
 
     companion object {
         fun parse(value: String?): TunnelMode {
             if (value == null) return SSH_PROXY_PAYLOAD
             val norm = value.uppercase().replace('-', '_').replace(' ', '_')
+            if (norm == "SSH_SSL" || norm == "SSH_TLS") return SSH_TLS
+            if (norm.startsWith("VLESS")) return VLESS_WS_TLS
             return entries.firstOrNull { it.name == norm }
                 ?: entries.firstOrNull { it.label.equals(value, ignoreCase = true) }
                 ?: SSH_PROXY_PAYLOAD
@@ -34,6 +47,15 @@ data class Profile(
     val localSocksPort: Int = 1080,
     /** Comma / space separated list of DNS server IPs (used when [remoteDns] is off). */
     val dns: String = DEFAULT_DNS,
+    /** Servers with the same group are shown as one entry with a variant dropdown. */
+    val group: String = "",
+    /** TLS server name (SNI) for SSH-TLS and VLESS; empty = the host name. */
+    val sni: String = "",
+    /** VLESS user id (UUID). */
+    val vlessUuid: String = "",
+    /** WebSocket path and Host header for VLESS-WS. */
+    val wsPath: String = "/",
+    val wsHost: String = "",
     /**
      * Let the SSH server resolve host names (like "ssh -D" with remote DNS). The phone gets
      * placeholder IPs from the built-in DNS and the real host name is sent in each SOCKS request.
@@ -62,6 +84,13 @@ data class Profile(
         put("localSocksPort", localSocksPort)
         put("dns", dns)
         put("remoteDns", remoteDns)
+        if (group.isNotEmpty()) put("group", group)
+        if (sni.isNotEmpty()) put("sni", sni)
+        if (vlessUuid.isNotEmpty()) put("vlessUuid", vlessUuid)
+        if (mode.isVless) {
+            put("wsPath", wsPath)
+            put("wsHost", wsHost)
+        }
     }
 
     companion object {
@@ -87,6 +116,11 @@ data class Profile(
                 localSocksPort = o.optInt("localSocksPort", 1080),
                 dns = o.optString("dns", DEFAULT_DNS).ifBlank { DEFAULT_DNS },
                 remoteDns = o.optBoolean("remoteDns", true),
+                group = o.optString("group"),
+                sni = o.optString("sni"),
+                vlessUuid = o.optString("vlessUuid"),
+                wsPath = o.optString("wsPath", "/").ifEmpty { "/" },
+                wsHost = o.optString("wsHost"),
             )
         }
 

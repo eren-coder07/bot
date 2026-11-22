@@ -107,8 +107,10 @@ fun ProfilesScreen(onBack: () -> Unit, onEdit: (Profile) -> Unit) {
     val selected = profiles.firstOrNull { it.id == selectedId }
     val q = query.trim().lowercase()
     val filtered = profiles.filter {
-        q.isEmpty() || it.name.lowercase().contains(q) || it.sshHost.lowercase().contains(q) || it.proxy.lowercase().contains(q)
+        q.isEmpty() || it.name.lowercase().contains(q) || it.group.lowercase().contains(q) ||
+            it.sshHost.lowercase().contains(q) || it.proxy.lowercase().contains(q)
     }
+    val entries = Graph.profiles.entries(filtered)
 
     Column(Modifier.fillMaxSize()) {
         TopBar(
@@ -168,7 +170,7 @@ fun ProfilesScreen(onBack: () -> Unit, onEdit: (Profile) -> Unit) {
                 item {
                     GlassCard(Modifier.fillMaxWidth(), highlighted = true) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            ProfileAvatar(selected.name, 46.dp)
+                            ProfileAvatar(selected.group.ifBlank { selected.name }, 46.dp)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -187,9 +189,12 @@ fun ProfilesScreen(onBack: () -> Unit, onEdit: (Profile) -> Unit) {
                                     )
                                 }
                                 Text(
-                                    selected.name, color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    selected.group.ifBlank { selected.name }, color = TextPrimary, fontSize = 19.sp,
+                                    fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
+                                if (selected.group.isNotBlank()) {
+                                    Text(selected.name, color = Lime, fontSize = 13.sp, maxLines = 1)
+                                }
                             }
                             Box(
                                 Modifier.size(24.dp).clip(RoundedCornerShape(6.dp)).background(Lime),
@@ -209,7 +214,7 @@ fun ProfilesScreen(onBack: () -> Unit, onEdit: (Profile) -> Unit) {
                         .padding(start = 12.dp, end = 12.dp, top = 14.dp, bottom = 4.dp),
                 ) {
                     SectionLabel("Select servers")
-                    if (filtered.isEmpty()) {
+                    if (entries.isEmpty()) {
                         Text(
                             if (profiles.isEmpty()) "No servers yet. Tap + to add one." else "No match",
                             color = TextSecondary, fontSize = 13.sp, modifier = Modifier.padding(vertical = 16.dp),
@@ -217,10 +222,12 @@ fun ProfilesScreen(onBack: () -> Unit, onEdit: (Profile) -> Unit) {
                     }
                 }
             }
-            items(filtered, key = { it.id }) { p ->
+            items(entries, key = { it.first().group.ifBlank { it.first().id } }) { entry ->
                 var menu by remember { mutableStateOf(false) }
-                val isSel = p.id == selectedId
-                Box(
+                val isGroup = entry.first().group.isNotBlank()
+                val isSel = entry.any { it.id == selectedId }
+                val p = entry.firstOrNull { it.id == selectedId } ?: entry.first()
+                Column(
                     Modifier.fillMaxWidth().background(Card).padding(horizontal = 12.dp, vertical = 4.dp),
                 ) {
                     Row(
@@ -228,18 +235,22 @@ fun ProfilesScreen(onBack: () -> Unit, onEdit: (Profile) -> Unit) {
                             .background(if (isSel) CardHigh else Color.White.copy(alpha = 0.02f))
                             .border(1.dp, if (isSel) Lime.copy(alpha = 0.25f) else CardBorder, RoundedCornerShape(14.dp))
                             .combinedClickable(
-                                onClick = { if (!locked) Graph.profiles.select(p.id) },
+                                onClick = { if (!locked) Graph.profiles.selectEntry(entry) },
                                 onLongClick = { menu = true },
                             )
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        ProfileAvatar(p.name, 34.dp)
+                        ProfileAvatar(if (isGroup) p.group else p.name, 34.dp)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(p.name, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                "${p.sshHost}:${p.sshPort}" + if (p.mode.usesProxy && p.proxy.isNotBlank()) " · ${p.proxy}" else "",
+                                if (isGroup) p.group else p.name, color = TextPrimary, fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                if (isGroup) "${entry.size} configs · ${if (isSel) p.name else "choose after selecting"}"
+                                else "${p.sshHost}:${p.sshPort}" + if (p.mode.usesProxy && p.proxy.isNotBlank()) " · ${p.proxy}" else "",
                                 color = TextSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             )
                         }
@@ -256,22 +267,30 @@ fun ProfilesScreen(onBack: () -> Unit, onEdit: (Profile) -> Unit) {
                                     .combinedClickable(onClick = { menu = true }),
                             )
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onEdit(p) })
-                                DropdownMenuItem(text = { Text("Duplicate") }, leadingIcon = { Icon(Icons.Filled.ContentCopy, null) }, onClick = { menu = false; Graph.profiles.duplicate(p.id) })
+                                val what = if (isGroup) " \"${p.name}\"" else ""
+                                DropdownMenuItem(text = { Text("Edit$what") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onEdit(p) })
+                                DropdownMenuItem(text = { Text("Duplicate$what") }, leadingIcon = { Icon(Icons.Filled.ContentCopy, null) }, onClick = { menu = false; Graph.profiles.duplicate(p.id) })
                                 DropdownMenuItem(
-                                    text = { Text("Export") }, leadingIcon = { Icon(Icons.Filled.Share, null) },
+                                    text = { Text(if (isGroup) "Export group" else "Export") }, leadingIcon = { Icon(Icons.Filled.Share, null) },
                                     onClick = {
                                         menu = false
-                                        exportIds = setOf(p.id)
-                                        exportLauncher.launch(p.name.replace(Regex("[^A-Za-z0-9._-]+"), "_") + ".json")
+                                        exportIds = entry.map { it.id }.toSet()
+                                        exportLauncher.launch((if (isGroup) p.group else p.name).replace(Regex("[^A-Za-z0-9._-]+"), "_") + ".json")
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Delete") }, leadingIcon = { Icon(Icons.Filled.Delete, null) },
+                                    text = { Text("Delete$what") }, leadingIcon = { Icon(Icons.Filled.Delete, null) },
                                     enabled = !(locked && isSel), onClick = { menu = false; toDelete = p },
                                 )
                             }
                         }
+                    }
+                    if (isGroup && isSel && entry.size > 1) {
+                        VariantPicker(
+                            variants = entry, selectedId = selectedId, enabled = !locked,
+                            onSelect = { Graph.profiles.select(it.id) },
+                            modifier = Modifier.padding(top = 6.dp, start = 24.dp),
+                        )
                     }
                 }
             }

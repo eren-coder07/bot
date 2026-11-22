@@ -30,7 +30,7 @@ class ProxyHandshake(
     fun open(): PreparedSocket {
         val proxyHost = profile.proxyHost
         val proxyPort = profile.proxyPort
-        val useProxy = profile.mode.usesProxy && !proxyHost.isNullOrBlank() && proxyPort != null
+        val useProxy = profile.mode.usesProxy && !profile.mode.usesTls && !proxyHost.isNullOrBlank() && proxyPort != null
         val host = if (useProxy) proxyHost!! else profile.sshHost
         val port = if (useProxy) proxyPort!! else profile.sshPort
 
@@ -39,7 +39,7 @@ class ProxyHandshake(
         }
         AppLog.i(if (useProxy) "Connecting to proxy $host:$port" else "Connecting to SSH host $host:$port")
 
-        val socket = Socket()
+        var socket = Socket()
         register(socket)
         protect(socket)
         socket.tcpNoDelay = true
@@ -51,6 +51,18 @@ class ProxyHandshake(
             throw HandshakeException(describeConnectError(e, host, port, useProxy), e)
         }
         AppLog.ok("TCP connected to ${socket.inetAddress?.hostAddress ?: host}:$port")
+
+        if (profile.mode.usesTls) {
+            val sni = profile.sni.ifBlank { profile.sshHost }
+            AppLog.i("TLS handshake (SNI: $sni)")
+            socket = try {
+                Tls.wrap(socket, sni, port).also { register(it) }
+            } catch (e: Exception) {
+                runCatching { socket.close() }
+                throw HandshakeException("TLS handshake with $host:$port failed (SNI $sni): ${e.message ?: e.javaClass.simpleName}", e)
+            }
+            AppLog.ok("TLS established (${(socket as javax.net.ssl.SSLSocket).session.protocol})")
+        }
 
         val template = when {
             !profile.mode.usesPayload -> ""

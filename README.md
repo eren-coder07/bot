@@ -24,7 +24,11 @@ file and allow "Install unknown apps" when Android asks.
 5. **Logs** shows every step with timestamps (proxy connect, payload sent, server response
    codes, SSH auth, SOCKS start, VPN up). Use the copy button to share a log.
 
-A default profile **rifi tech win\*6** is created on first launch. You can edit it.
+The app ships with one server, **Free Vip**, which bundles several configs. Pick it, then
+choose the config in the dropdown under the traffic cards (or under the server on the Servers
+screen): WIN\*6 1, WIN\*6 2, IAM\*6 IP 10, IAM\*6 IP 100, IAM\*6 SSH, IAM\*6 SSL (SSH over TLS)
+and IAM\*6 VLESS (VLESS over WebSocket + TLS). Every config can be edited. To make your own
+group, give several servers the same **Group** name in the editor.
 
 ## Adding your own server
 
@@ -33,7 +37,10 @@ A default profile **rifi tech win\*6** is created on first launch. You can edit 
 | Field | Meaning |
 |---|---|
 | Profile name | Any name |
-| Mode | `SSH Direct` (plain SSH), `SSH-Payload` (payload sent straight to the SSH host), `SSH-Proxy-Payload` (connect to the remote proxy, send payload), `SSH-Proxy (HTTP CONNECT)` (empty payload = `CONNECT host:port`) |
+| Mode | `SSH Direct` (plain SSH), `SSH-Payload` (payload sent straight to the SSH host), `SSH-Proxy-Payload` (connect to the remote proxy, send payload), `SSH-Proxy (HTTP CONNECT)` (empty payload = `CONNECT host:port`), `SSH-TLS` (SSH inside TLS with a custom SNI), `SSH-TLS-Payload` (TLS, then payload, then SSH), `VLESS-WS-TLS` (VLESS over WebSocket + TLS, as in Xray/v2ray) |
+| TLS SNI | Server name sent in TLS (SSH-TLS, VLESS). Certificates are not verified |
+| UUID / WebSocket path / Host | VLESS settings |
+| Group | Servers with the same group show as one entry with a config dropdown |
 | SSH host / port | Your SSH server, e.g. `kn.spedo.qzz.io` / `80` |
 | Username / password | SSH account (password is stored encrypted with EncryptedSharedPreferences) |
 | Proxy host:port | Remote proxy, e.g. `help.twitter.com:8080`. Empty = connect directly to the SSH host |
@@ -58,6 +65,10 @@ the server answers `101 Switching Protocols` or the SSH banner (`SSH-2.0-...`) a
 starts SSH on the same socket. If the server stays silent, SSH starts anyway after 15 s.
 
 ### Import / export
+
+Import also accepts decoded NapsternetV-style dumps (`{"source_file", "config": {"configs": [...]}}`
+with `sshConfig` or a VLESS `v2rayProfile`) and flat dumps (`ssh_host`, `ssh_port`, `http_proxy`, ...).
+
 
 **Servers** → top-right ⋮ imports or exports all profiles as JSON; a row's ⋮ → *Export* exports one
 profile. Exported files **contain passwords in plain text**, so share them carefully.

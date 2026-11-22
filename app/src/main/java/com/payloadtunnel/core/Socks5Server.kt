@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * DNS-over-TCP queries through the SSH tunnel. Other UDP traffic cannot be carried by SSH
  * and is dropped.
  */
-class Socks5Server(private val ssh: SshConnection) {
+class Socks5Server(private val ssh: Upstream) {
     private val loopback: InetAddress = InetAddress.getByName("127.0.0.1")
     private var server: ServerSocket? = null
     private val pool: ExecutorService = Executors.newCachedThreadPool { r ->
@@ -145,7 +145,7 @@ class Socks5Server(private val ssh: SshConnection) {
             return
         }
         val channel = try {
-            ssh.openDirect(host, port)
+            ssh.open(host, port)
         } catch (e: Exception) {
             val n = failedConnects.incrementAndGet()
             if (n <= 5 || n % 50 == 0) AppLog.w("Server could not open $host:$port (${e.message})")
@@ -263,10 +263,10 @@ class Socks5Server(private val ssh: SshConnection) {
     }
 
     private fun dnsOverTcp(server: String, query: ByteArray): ByteArray? {
-        var channel: DirectChannel? = null
+        var channel: StreamChannel? = null
         val watchdog = timer.schedule({ channel?.close() }, 10, TimeUnit.SECONDS)
         return try {
-            channel = ssh.openDirect(server, 53, 10_000)
+            channel = ssh.open(server, 53, 10_000)
             val out = channel.output
             out.write(byteArrayOf((query.size shr 8).toByte(), query.size.toByte()) + query)
             out.flush()
@@ -278,7 +278,7 @@ class Socks5Server(private val ssh: SshConnection) {
         } catch (e: Exception) {
             val n = dnsFailures.incrementAndGet()
             if (n <= 3 || n % 100 == 0) {
-                AppLog.w("DNS query to $server:53 through SSH failed (${e.message ?: e.javaClass.simpleName})")
+                AppLog.w("DNS query to $server:53 through the tunnel failed (${e.message ?: e.javaClass.simpleName})")
             }
             null
         } finally {

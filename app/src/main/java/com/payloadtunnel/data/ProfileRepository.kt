@@ -22,15 +22,40 @@ class ProfileRepository(context: Context) {
     val selectedId: StateFlow<String?> = _selectedId
 
     init {
-        if (!prefs.getBoolean(KEY_INITIALIZED, false)) {
-            val def = Profile.defaultProfile()
-            persist(listOf(def))
-            prefs.edit().putBoolean(KEY_INITIALIZED, true).putString(KEY_SELECTED, def.id).apply()
-        }
         _profiles.value = load()
+        if (prefs.getInt(KEY_BUILTIN_VERSION, 0) < BuiltinServers.VERSION) {
+            seedBuiltins(firstRun = !prefs.getBoolean(KEY_INITIALIZED, false))
+        }
         _selectedId.value = prefs.getString(KEY_SELECTED, null)
             ?.takeIf { id -> _profiles.value.any { it.id == id } }
             ?: _profiles.value.firstOrNull()?.id
+    }
+
+    /** Adds or refreshes the built-in "Free Vip" servers, keeping the user's own profiles. */
+    private fun seedBuiltins(firstRun: Boolean) {
+        val builtinIds = BuiltinServers.all.map { it.id }.toSet()
+        val oldDefault = Profile.defaultProfile()
+        var oldDefaultSelected = false
+        val kept = _profiles.value.filter { p ->
+            if (p.id in builtinIds) return@filter false
+            // Drop the untouched single default profile from older versions (now "WIN*6 1").
+            val isOldDefault = p.copy(id = oldDefault.id) == oldDefault
+            if (isOldDefault && p.id == prefs.getString(KEY_SELECTED, null)) oldDefaultSelected = true
+            !isOldDefault
+        }
+        persist(BuiltinServers.all + kept)
+        val edit = prefs.edit().putBoolean(KEY_INITIALIZED, true).putInt(KEY_BUILTIN_VERSION, BuiltinServers.VERSION)
+        if (firstRun || oldDefaultSelected || prefs.getString(KEY_SELECTED, null) == null) {
+            edit.putString(KEY_SELECTED, BuiltinServers.all.first().id)
+        }
+        edit.apply()
+    }
+
+    /** Profiles grouped for display: each group once (in first-seen order), ungrouped ones alone. */
+    fun entries(list: List<Profile> = _profiles.value): List<List<Profile>> {
+        val out = LinkedHashMap<String, MutableList<Profile>>()
+        list.forEach { p -> out.getOrPut(if (p.group.isBlank()) "id:" + p.id else "g:" + p.group) { mutableListOf() } += p }
+        return out.values.toList()
     }
 
     fun get(id: String?): Profile? = _profiles.value.firstOrNull { it.id == id }
@@ -39,7 +64,16 @@ class ProfileRepository(context: Context) {
 
     fun select(id: String) {
         _selectedId.value = id
-        prefs.edit().putString(KEY_SELECTED, id).apply()
+        val edit = prefs.edit().putString(KEY_SELECTED, id)
+        get(id)?.group?.takeIf { it.isNotBlank() }?.let { edit.putString("last_in_group_$it", id) }
+        edit.apply()
+    }
+
+    /** Selects a group entry: its last used variant, or the first one. */
+    fun selectEntry(entry: List<Profile>) {
+        val group = entry.first().group
+        val last = if (group.isNotBlank()) prefs.getString("last_in_group_$group", null) else null
+        select(entry.firstOrNull { it.id == last }?.id ?: entry.first().id)
     }
 
     @Synchronized
@@ -66,32 +100,24 @@ class ProfileRepository(context: Context) {
 
     fun duplicate(id: String): Profile? {
         val src = get(id) ?: return null
-        val copy = src.copy(id = java.util.UUID.randomUUID().toString(), name = src.name + " (copy)")
+        val copy = src.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            name = if (src.group.isNotBlank()) "${src.group} ${src.name}" else src.name + " (copy)",
+            group = "",
+        )
         save(copy)
         return copy
     }
 
-    /** Returns the number of imported profiles. Accepts a single object, an array, or {"profiles": [...]}. */
+    /** Returns the number of imported profiles (see [ConfigImport] for the accepted formats). */
     fun importJson(text: String): Int {
-        val trimmed = text.trim()
-        val arr: JSONArray = when {
-            trimmed.startsWith("[") -> JSONArray(trimmed)
-            else -> {
-                val obj = JSONObject(trimmed)
-                obj.optJSONArray("profiles") ?: JSONArray().put(obj)
-            }
-        }
-        var count = 0
         val existingIds = _profiles.value.map { it.id }.toSet()
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            var p = Profile.fromJson(o)
-            if (p.id in existingIds) p = p.copy(id = java.util.UUID.randomUUID().toString())
-            if (p.sshHost.isBlank()) continue
+        val parsed = ConfigImport.parse(text)
+        parsed.forEach { p0 ->
+            val p = if (p0.id in existingIds) p0.copy(id = java.util.UUID.randomUUID().toString()) else p0
             save(p)
-            count++
         }
-        return count
+        return parsed.size
     }
 
     fun exportJson(ids: Collection<String>? = null): String {
@@ -133,5 +159,6 @@ class ProfileRepository(context: Context) {
         private const val KEY_PROFILES = "profiles_json"
         private const val KEY_SELECTED = "selected_id"
         private const val KEY_INITIALIZED = "initialized"
+        private const val KEY_BUILTIN_VERSION = "builtin_version"
     }
 }
