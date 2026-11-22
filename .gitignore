@@ -1,0 +1,16 @@
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aab
+*.jks
+*.keystore
+!gradle/wrapper/gradle-wrapper.jar
+# Python bot
+__pycache__/
