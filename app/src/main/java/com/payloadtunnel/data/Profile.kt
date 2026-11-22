@@ -75,7 +75,7 @@ data class Profile(
                 sshPort = o.optInt("sshPort", o.optInt("port", 22)),
                 username = o.optString("username", o.optString("user")),
                 password = o.optString("password"),
-                mode = TunnelMode.parse(o.optString("mode", null)),
+                mode = TunnelMode.parse(if (o.has("mode")) o.optString("mode") else null),
                 proxy = proxy,
                 payload = o.optString("payload"),
                 localSocksPort = o.optInt("localSocksPort", 1080),

@@ -26,15 +26,15 @@ import java.net.Socket
  *   E2E_HTTP=127.0.0.1:18081 ./gradlew testReleaseUnitTest
  */
 class EndToEndTest {
-    private fun env(name: String) = System.getenv(name)
+    private fun env(name: String): String? = System.getenv(name)
 
     @Test
     fun tunnelWorksEndToEnd() {
         assumeTrue("E2E_PROXY not set", env("E2E_PROXY") != null)
-        val (sshHost, sshPort) = Profile.parseHostPort(env("E2E_SSH"))!!
+        val (sshHost, sshPort) = Profile.parseHostPort(env("E2E_SSH")!!)!!
         val profile = Profile.defaultProfile().copy(
-            sshHost = sshHost, sshPort = sshPort, username = env("E2E_USER"), password = env("E2E_PASS"),
-            proxy = env("E2E_PROXY"),
+            sshHost = sshHost, sshPort = sshPort, username = env("E2E_USER")!!, password = env("E2E_PASS")!!,
+            proxy = env("E2E_PROXY")!!,
         )
         val prepared = ProxyHandshake(profile, "UA-test", {}, {}, {}).open()
         val ssh = SshConnection.connect(profile, prepared)
@@ -47,7 +47,7 @@ class EndToEndTest {
         assertNotEquals(blocker.localPort, port)
 
         // HTTP through SOCKS5 CONNECT
-        val (httpHost, httpPort) = Profile.parseHostPort(env("E2E_HTTP"))!!
+        val (httpHost, httpPort) = Profile.parseHostPort(env("E2E_HTTP")!!)!!
         val s = Socket(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port)))
         s.connect(InetSocketAddress.createUnresolved(httpHost, httpPort), 10_000)
         s.getOutputStream().write("GET / HTTP/1.0\r\nHost: $httpHost\r\n\r\n".toByteArray())
