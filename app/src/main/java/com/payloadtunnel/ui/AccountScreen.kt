@@ -113,7 +113,7 @@ fun AccountScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("On your PC set a SOCKS5 proxy to:", color = TextSecondary, fontSize = 12.sp)
+                                Text("On your PC set an HTTP or SOCKS5 proxy to:", color = TextSecondary, fontSize = 12.sp)
                                 Text(proxy, color = Lime, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
                             }
                             Box(
@@ -140,27 +140,23 @@ fun AccountScreen(
                 }
             }
 
-            // Account key
+            // Your ID (give this to the admin for more time)
             GlassCard(Modifier.fillMaxWidth()) {
-                Text("Access key", color = TextSecondary, fontSize = 12.sp)
-                Text(mask(keyVal), color = TextPrimary, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
-                Spacer(Modifier.height(12.dp))
-                RowAction(Icons.Filled.Login, "Use a different key", "Sign out and enter another key") {
-                    TunnelVpnService.disconnect(context)
-                    Graph.session.clearKey()
-                }
-            }
-
-            // Security
-            GlassCard(Modifier.fillMaxWidth()) {
+                Text("Your ID", color = TextSecondary, fontSize = 12.sp)
+                val id = keyVal ?: ""
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Shield, null, tint = Connected, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("Protected", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text("Root, tamper and traffic-capture checks are on", color = TextSecondary, fontSize = 12.sp)
-                    }
+                    Text(
+                        if (id.length > 8) id.take(8) else id, color = TextPrimary, fontSize = 18.sp,
+                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
+                    )
+                    Box(
+                        Modifier.size(34.dp).clip(CircleShape).background(Color_white()).clickable {
+                            copy(context, id); toast(context, "ID copied")
+                        },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.ContentCopy, "Copy", tint = Lime, modifier = Modifier.size(16.dp)) }
                 }
+                Text("Share this ID with the admin to get more time.", color = TextSecondary, fontSize = 12.sp)
             }
 
             Text(

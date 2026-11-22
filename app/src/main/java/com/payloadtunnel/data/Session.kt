@@ -18,10 +18,11 @@ class Session(context: Context) {
         secure.edit().putString(K_DEVICE, it).apply()
     }
 
-    private val _key = MutableStateFlow(secure.getString(K_KEY, null)?.takeIf { it.isNotBlank() })
+    // The random device id IS the user's credential — no access keys.
+    private val _key = MutableStateFlow<String?>(deviceId)
     val key: StateFlow<String?> = _key
 
-    private val _state = MutableStateFlow(if (_key.value == null) State.NO_KEY else State.CHECKING)
+    private val _state = MutableStateFlow(State.CHECKING)
     val state: StateFlow<State> = _state
 
     private val _timeRemaining = MutableStateFlow(prefs.getLong(K_TIME, 0))
@@ -36,8 +37,10 @@ class Session(context: Context) {
         private set
     @Volatile var adRewardSeconds: Long = prefs.getLong(K_ADREWARD, 3600)
         private set
+    @Volatile var testAds: Boolean = false
+        private set
 
-    fun hasKey(): Boolean = !_key.value.isNullOrBlank()
+    fun hasKey(): Boolean = true
 
     fun saveKey(k: String) {
         val key = k.trim()
@@ -62,6 +65,7 @@ class Session(context: Context) {
         label = a.label
         startAppId = a.startAppId.ifBlank { startAppId }
         adRewardSeconds = a.adRewardSeconds
+        testAds = a.testAds
         _timeRemaining.value = a.timeRemaining
         _announcement.value = a.announcement
         prefs.edit()

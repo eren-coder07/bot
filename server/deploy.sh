@@ -14,6 +14,7 @@ ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(openssl rand -hex 8)}"
 COOKIE_SECRET="${COOKIE_SECRET:-$(openssl rand -hex 32)}"
 BOOTSTRAP_KEY="${BOOTSTRAP_KEY:-$(tr -dc 'A-HJ-NP-Z2-9' </dev/urandom | head -c12 | sed 's/.\{4\}/&-/g;s/-$//')}"
 REPO="${REPO:-https://github.com/eren-coder07/bot}"
+BRANCH="${BRANCH:-jat-vpn-opus}"
 PORT="${PORT:-8080}"
 DIR=/opt/jatvpn
 
@@ -21,7 +22,7 @@ apt-get update -y
 apt-get install -y python3-venv git curl
 
 rm -rf "$DIR/repo"
-git clone --depth 1 "$REPO" "$DIR/repo"
+git clone --depth 1 --branch "$BRANCH" "$REPO" "$DIR/repo"
 mkdir -p "$DIR/server" /var/lib/jatvpn
 cp -r "$DIR/repo/server/." "$DIR/server/"
 python3 -m venv "$DIR/venv"
@@ -51,7 +52,8 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now jatvpn
+systemctl enable jatvpn
+systemctl restart jatvpn
 # open the port if ufw is active
 command -v ufw >/dev/null && ufw allow "$PORT"/tcp || true
 sleep 2

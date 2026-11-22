@@ -43,27 +43,20 @@ object Graph {
         api = ApiClient()
     }
 
-    /** Validates the key, loads configs. Returns null on success or a user-facing error. */
-    suspend fun signIn(key: String): String? {
-        session.saveKey(key)
-        return refresh()
-    }
-
-    /** Re-checks the key and refreshes configs. Returns null on success or an error message. */
+    /** Registers this device (gets/keeps its time) and loads configs. Returns null or an error. */
     suspend fun refresh(): String? {
-        val key = session.key.value ?: return "No access key."
+        val id = session.deviceId
         return try {
-            val auth = api.auth(key, session.deviceId)
-            session.applyAuth(auth)
-            runCatching { configs.refresh(api, key) }
-            null
-        } catch (e: ApiException) {
-            when (e.code) {
-                "banned" -> session.setState(Session.State.BANNED)
-                "invalid", "device" -> session.setState(Session.State.INVALID)
-                "network" -> session.setState(Session.State.OFFLINE)
-                else -> session.setState(Session.State.OFFLINE)
+            session.applyAuth(api.register(id))
+            try {
+                configs.refresh(api, id)
+                null
+            } catch (e: Exception) {
+                if (configs.configs.value.isNotEmpty()) null // already have cached servers
+                else "Reached the server but couldn't load servers (${(e as? ApiException)?.message ?: e.message ?: "decode error"}). Check APP_SECRET matches."
             }
+        } catch (e: ApiException) {
+            session.setState(if (e.code == "banned") Session.State.BANNED else Session.State.OFFLINE)
             e.message
         }
     }

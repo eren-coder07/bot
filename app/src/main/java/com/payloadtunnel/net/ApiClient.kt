@@ -24,16 +24,26 @@ class ApiClient(
 ) {
     data class Auth(
         val label: String, val timeRemaining: Long, val freeSessionSeconds: Long,
-        val adRewardSeconds: Long, val startAppId: String, val announcement: String,
+        val adRewardSeconds: Long, val startAppId: String, val announcement: String, val testAds: Boolean,
     )
 
     suspend fun ping(): JSONObject = request("GET", "/api/v1/ping", null, null)
+
+    suspend fun register(deviceId: String): Auth {
+        val o = request("POST", "/api/v1/register", deviceId, org.json.JSONObject())
+        return Auth(
+            o.optString("label"), o.optLong("timeRemaining"), o.optLong("freeSessionSeconds", 3600),
+            o.optLong("adRewardSeconds", 3600), o.optString("startAppId"), o.optString("announcement"),
+            o.optBoolean("testAds", false),
+        )
+    }
 
     suspend fun auth(key: String, deviceId: String): Auth {
         val o = request("POST", "/api/v1/auth", key, JSONObject().put("device_id", deviceId))
         return Auth(
             o.optString("label"), o.optLong("timeRemaining"), o.optLong("freeSessionSeconds", 3600),
             o.optLong("adRewardSeconds", 3600), o.optString("startAppId"), o.optString("announcement"),
+            o.optBoolean("testAds", false),
         )
     }
 

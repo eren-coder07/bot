@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -55,7 +54,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        if (compromised()) { killApp(); return }
         enableEdgeToEdge()
         ads = AdManager(this)
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -64,37 +63,46 @@ class MainActivity : ComponentActivity() {
         setContent { AppTheme { Root() } }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (compromised()) killApp()
+    }
+
+    private fun compromised(): Boolean = SecurityGuard.check(this).block() != null
+
+    private fun killApp() {
+        runCatching { finishAffinity() }
+        android.os.Process.killProcess(android.os.Process.myPid())
+        kotlin.system.exitProcess(10)
+    }
+
     @Composable
     private fun Root() {
         val scope = rememberCoroutineScope()
         val sessionState by Graph.session.state.collectAsState()
         val configs by Graph.configs.configs.collectAsState()
-        var security by remember { mutableStateOf(SecurityGuard.check(this).block()) }
         var adLoading by remember { mutableStateOf(false) }
         setAdLoading = { adLoading = it }
-
-        LaunchedEffect(Unit) {
-            if (Graph.session.hasKey()) Graph.refresh()
-            security = SecurityGuard.check(this@MainActivity).block()
+        var attempt by remember { mutableStateOf(0) }
+        var loading by remember { mutableStateOf(true) }
+        var loadError by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(attempt) {
+            loading = true
+            loadError = Graph.refresh()
+            loading = false
         }
 
-        if (security != null) {
-            SecurityBlockScreen(security!!) { security = SecurityGuard.check(this).block() }
-            return
-        }
-
-        val gate = !Graph.session.hasKey() || sessionState == Session.State.INVALID || sessionState == Session.State.BANNED
         when {
-            gate -> KeyGateScreen(sessionState) { key -> scope.launch { Graph.signIn(key) } }
-            configs.isEmpty() && sessionState == Session.State.CHECKING -> LoadingScreen()
-            configs.isEmpty() -> KeyGateScreen(Session.State.OFFLINE) { key -> scope.launch { Graph.signIn(key) } }
-            else -> MainScaffold(
+            sessionState == Session.State.BANNED -> BlockedScreen(Graph.session.deviceId)
+            configs.isNotEmpty() -> MainScaffold(
                 onConnect = ::connect,
                 onDisconnect = { TunnelVpnService.disconnect(this) },
                 onRefresh = { done -> scope.launch { done(Graph.refresh()) } },
                 onWatchAd = { watchAd() },
                 adLoading = adLoading,
             )
+            loading -> LoadingScreen()
+            else -> ErrorScreen(loadError ?: "Can't reach the server.") { attempt++ }
         }
     }
 

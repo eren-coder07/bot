@@ -28,7 +28,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * DNS-over-TCP queries through the SSH tunnel. Other UDP traffic cannot be carried by SSH
  * and is dropped.
  */
-class Socks5Server(private val ssh: Upstream, private val bindAddress: InetAddress = InetAddress.getByName("127.0.0.1")) {
+class Socks5Server(
+    private val ssh: Upstream,
+    private val bindAddress: InetAddress = InetAddress.getByName("127.0.0.1"),
+    private val allowHttp: Boolean = false,
+) {
     private val loopback: InetAddress = bindAddress
     private var server: ServerSocket? = null
     private val pool: ExecutorService = Executors.newCachedThreadPool { r ->
@@ -108,32 +112,38 @@ class Socks5Server(private val ssh: Upstream, private val bindAddress: InetAddre
         try {
             client.tcpNoDelay = true
             client.soTimeout = 30_000
-            val input = DataInputStream(client.getInputStream())
+            val bin = java.io.BufferedInputStream(client.getInputStream())
             val output = client.getOutputStream()
-
-            // Greeting
-            if (input.readUnsignedByte() != 5) return closeQuietly(client)
-            val nMethods = input.readUnsignedByte()
-            input.readFully(ByteArray(nMethods))
-            output.write(byteArrayOf(5, 0))
-            output.flush()
-
-            // Request
-            if (input.readUnsignedByte() != 5) return closeQuietly(client)
-            val cmd = input.readUnsignedByte()
-            input.readUnsignedByte() // RSV
-            val (host, port) = readAddress(input)
-
-            when (cmd) {
-                1 -> handleConnect(client, input, output, host, port)
-                3 -> handleUdpAssociate(client, input, output)
-                else -> {
-                    reply(output, 7)
-                    closeQuietly(client)
-                }
+            bin.mark(1)
+            val first = bin.read()
+            if (first < 0) return closeQuietly(client)
+            bin.reset()
+            when {
+                first == 0x05 -> handleSocks(client, DataInputStream(bin), output)
+                allowHttp -> handleHttp(client, bin, output)
+                else -> closeQuietly(client)
             }
         } catch (e: Exception) {
             closeQuietly(client)
+        }
+    }
+
+    private fun handleSocks(client: Socket, input: DataInputStream, output: OutputStream) {
+        // Greeting
+        if (input.readUnsignedByte() != 5) return closeQuietly(client)
+        val nMethods = input.readUnsignedByte()
+        input.readFully(ByteArray(nMethods))
+        output.write(byteArrayOf(5, 0))
+        output.flush()
+        // Request
+        if (input.readUnsignedByte() != 5) return closeQuietly(client)
+        val cmd = input.readUnsignedByte()
+        input.readUnsignedByte() // RSV
+        val (host, port) = readAddress(input)
+        when (cmd) {
+            1 -> handleConnect(client, input, output, host, port)
+            3 -> handleUdpAssociate(client, input, output)
+            else -> { reply(output, 7); closeQuietly(client) }
         }
     }
 
@@ -153,58 +163,115 @@ class Socks5Server(private val ssh: Upstream, private val bindAddress: InetAddre
             closeQuietly(client)
             return
         }
-        val channelCloser = java.io.Closeable { channel.close() }
-        clients += channelCloser
         reply(output, 0)
         client.soTimeout = 0
+        relay(client, input, output, channel)
+    }
 
+    /** Bidirectional copy between the client socket and an upstream channel (SOCKS/HTTP share it). */
+    private fun relay(client: Socket, cin: InputStream, cout: OutputStream, channel: StreamChannel, preload: ByteArray? = null) {
+        val closer = java.io.Closeable { channel.close() }
+        clients += closer
+        if (preload != null && preload.isNotEmpty()) {
+            runCatching {
+                channel.output.write(preload); channel.output.flush()
+                TunnelStatus.bytesUp.addAndGet(preload.size.toLong())
+            }
+        }
         val remaining = AtomicInteger(2)
         val finish = {
             if (remaining.decrementAndGet() == 0) {
-                clients -= channelCloser
+                clients -= closer
                 channel.close()
                 closeQuietly(client)
             }
         }
-        // client -> server (upload)
         pool.execute {
             val buf = ByteArray(BUF)
             try {
                 while (true) {
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    channel.output.write(buf, 0, n)
-                    channel.output.flush()
+                    val n = cin.read(buf); if (n < 0) break
+                    channel.output.write(buf, 0, n); channel.output.flush()
                     TunnelStatus.bytesUp.addAndGet(n.toLong())
                 }
-                runCatching { channel.output.close() } // half-close: send EOF
+                runCatching { channel.output.close() }
                 finish()
-            } catch (e: Exception) {
-                channel.close()
-                closeQuietly(client)
-                finish()
-            }
+            } catch (e: Exception) { channel.close(); closeQuietly(client); finish() }
         }
-        // server -> client (download), on this thread
         val buf = ByteArray(BUF)
         try {
             while (true) {
-                val n = channel.input.read(buf)
-                if (n < 0) break
-                output.write(buf, 0, n)
-                output.flush()
+                val n = channel.input.read(buf); if (n < 0) break
+                cout.write(buf, 0, n); cout.flush()
                 TunnelStatus.bytesDown.addAndGet(n.toLong())
             }
             runCatching { client.shutdownOutput() }
             finish()
-        } catch (e: Exception) {
-            channel.close()
-            closeQuietly(client)
-            finish()
+        } catch (e: Exception) { channel.close(); closeQuietly(client); finish() }
+    }
+
+    /** HTTP proxy for "share net": CONNECT tunnels (HTTPS), absolute-URI forwards plain HTTP. */
+    private fun handleHttp(client: Socket, cin: InputStream, output: OutputStream) {
+        val head = java.io.ByteArrayOutputStream()
+        val one = ByteArray(1)
+        while (true) {
+            val n = cin.read(one); if (n < 0) return closeQuietly(client)
+            head.write(one[0].toInt())
+            val a = head.toByteArray()
+            if (a.size >= 4 && a[a.size - 4] == 13.toByte() && a[a.size - 3] == 10.toByte() &&
+                a[a.size - 2] == 13.toByte() && a[a.size - 1] == 10.toByte()) break
+            if (head.size() > 65536) return closeQuietly(client)
+        }
+        val lines = String(head.toByteArray(), Charsets.ISO_8859_1).split("\r\n")
+        val parts = lines.firstOrNull()?.split(" ") ?: return closeQuietly(client)
+        if (parts.size < 3) return closeQuietly(client)
+        val method = parts[0].uppercase()
+        if (method == "CONNECT") {
+            val hp = splitHostPort(parts[1], 443) ?: return closeQuietly(client)
+            if (isLocalTunAddress(hp.first)) return closeQuietly(client)
+            val channel = try { ssh.open(hp.first, hp.second) } catch (e: Exception) {
+                runCatching { output.write("HTTP/1.1 502 Bad Gateway\r\n\r\n".toByteArray()) }; return closeQuietly(client)
+            }
+            output.write("HTTP/1.1 200 Connection established\r\n\r\n".toByteArray()); output.flush()
+            client.soTimeout = 0
+            relay(client, cin, output, channel)
+        } else {
+            val uri = parts[1]
+            if (!uri.startsWith("http://", ignoreCase = true)) return closeQuietly(client)
+            val rest = uri.substring(7)
+            val slash = rest.indexOf('/')
+            val hostPart = if (slash < 0) rest else rest.substring(0, slash)
+            val path = if (slash < 0) "/" else rest.substring(slash)
+            val hp = splitHostPort(hostPart, 80) ?: return closeQuietly(client)
+            if (isLocalTunAddress(hp.first)) return closeQuietly(client)
+            val channel = try { ssh.open(hp.first, hp.second) } catch (e: Exception) {
+                runCatching { output.write("HTTP/1.1 502 Bad Gateway\r\n\r\n".toByteArray()) }; return closeQuietly(client)
+            }
+            val sb = StringBuilder("$method $path ${parts[2]}\r\n")
+            for (i in 1 until lines.size) {
+                val line = lines[i]
+                if (line.isEmpty()) break
+                if (line.lowercase().startsWith("proxy-connection:")) continue
+                sb.append(line).append("\r\n")
+            }
+            sb.append("\r\n")
+            client.soTimeout = 0
+            relay(client, cin, output, channel, sb.toString().toByteArray(Charsets.ISO_8859_1))
         }
     }
 
-    private fun handleUdpAssociate(client: Socket, input: InputStream, output: OutputStream) {
+    private fun splitHostPort(value: String, defPort: Int): Pair<String, Int>? {
+        val v = value.trim()
+        if (v.isEmpty()) return null
+        val i = v.lastIndexOf(':')
+        if (i > 0 && v.count { it == ':' } == 1) {
+            val port = v.substring(i + 1).toIntOrNull() ?: return null
+            return v.substring(0, i) to port
+        }
+        return v to defPort
+    }
+
+        private fun handleUdpAssociate(client: Socket, input: InputStream, output: OutputStream) {
         val udp = DatagramSocket(InetSocketAddress(loopback, 0))
         clients += udp
         val p = udp.localPort
