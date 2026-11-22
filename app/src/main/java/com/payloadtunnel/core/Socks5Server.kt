@@ -28,8 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * DNS-over-TCP queries through the SSH tunnel. Other UDP traffic cannot be carried by SSH
  * and is dropped.
  */
-class Socks5Server(private val ssh: Upstream) {
-    private val loopback: InetAddress = InetAddress.getByName("127.0.0.1")
+class Socks5Server(private val ssh: Upstream, private val bindAddress: InetAddress = InetAddress.getByName("127.0.0.1")) {
+    private val loopback: InetAddress = bindAddress
     private var server: ServerSocket? = null
     private val pool: ExecutorService = Executors.newCachedThreadPool { r ->
         Thread(r, "socks-${threadIds.incrementAndGet()}").apply { isDaemon = true }

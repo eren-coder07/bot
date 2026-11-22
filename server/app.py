@@ -22,6 +22,11 @@ APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="Payload Tunnel Server", docs_url=None, redoc_url=None, openapi_url=None)
 db.init(seed_configs=SEED)
 
+# Optional: create a ready-to-use access key on first boot (set BOOTSTRAP_KEY in the environment).
+_bootstrap = os.environ.get("BOOTSTRAP_KEY")
+if _bootstrap and not db.get_key(_bootstrap):
+    db.create_key(_bootstrap, "bootstrap", int(os.environ.get("BOOTSTRAP_MINUTES", "99999")))
+
 
 # ----------------------------- helpers -----------------------------
 def _client_config(cfg: dict) -> dict:

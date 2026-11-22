@@ -80,6 +80,13 @@ jobs:
             } >> "$GITHUB_ENV"
           fi
 
+      - name: Compute signature fingerprint (anti-tamper self-check)
+        run: |
+          sig=$(keytool -list -v -keystore "$RELEASE_STORE_FILE" -storepass "$RELEASE_STORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" \
+                | grep -i "SHA256:" | head -1 | sed 's/.*SHA256: //' | tr -d ': ' | tr 'A-F' 'a-f')
+          echo "EXPECTED_SIG=$sig" >> "$GITHUB_ENV"
+          echo "App signature SHA-256: $sig"
+
       - name: Unit tests
         run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest
 

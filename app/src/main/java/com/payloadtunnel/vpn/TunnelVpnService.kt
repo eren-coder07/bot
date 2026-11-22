@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.payloadtunnel.App
 import com.payloadtunnel.Graph
 import com.payloadtunnel.data.Session
+import com.payloadtunnel.data.ShareNet
 import com.payloadtunnel.net.ApiException
 import com.payloadtunnel.R
 import com.payloadtunnel.core.AppLog
@@ -54,6 +55,7 @@ class TunnelVpnService : VpnService() {
 
     @Volatile private var ssh: Upstream? = null
     @Volatile private var socks: Socks5Server? = null
+    @Volatile private var shareServer: Socks5Server? = null
     @Volatile private var pendingSocket: Socket? = null
     @Volatile private var stopRequested = false
 
@@ -100,6 +102,7 @@ class TunnelVpnService : VpnService() {
             notifJob = scope.launch {
                 while (isActive) {
                     delay(2000)
+                    reconcileShare()
                     updateNotification()
                 }
             }
@@ -224,6 +227,7 @@ class TunnelVpnService : VpnService() {
             )
         }
         AppLog.good("Connected")
+        reconcileShare()
         updateNotification()
     }
 
@@ -306,6 +310,9 @@ class TunnelVpnService : VpnService() {
 
     /** Closes SSH + SOCKS but keeps the VPN interface so nothing leaks while reconnecting. */
     private fun closeConnections() {
+        shareServer?.stop()
+        shareServer = null
+        ShareNet.setStopped()
         pendingSocket?.let { runCatching { it.close() } }
         pendingSocket = null
         socks?.stop()
@@ -404,6 +411,29 @@ class TunnelVpnService : VpnService() {
         } catch (e: ApiException) {
             if (e.code == "banned") { Graph.session.setState(Session.State.BANNED); false }
             else true // tolerate transient network errors
+        }
+    }
+
+    /** Starts/stops the LAN SOCKS proxy for "share net" based on the toggle and connection state. */
+    private fun reconcileShare() {
+        val up = ssh
+        val want = ShareNet.state.value.enabled && up != null &&
+            TunnelStatus.state.value.status == Status.CONNECTED
+        if (want && shareServer == null) {
+            try {
+                val srv = Socks5Server(up!!, InetAddress.getByName("0.0.0.0"))
+                val port = srv.start(ShareNet.state.value.port.takeIf { it > 0 } ?: ShareNet.DEFAULT_PORT)
+                shareServer = srv
+                ShareNet.setRunning(port, ShareNet.localAddress())
+                AppLog.good("Sharing connection on ${ShareNet.localAddress() ?: "this device"}:$port")
+            } catch (e: Exception) {
+                AppLog.dbg("share start failed: ${e.message}")
+            }
+        } else if (!want && shareServer != null) {
+            shareServer?.stop()
+            shareServer = null
+            ShareNet.setStopped()
+            AppLog.step("Stopped sharing")
         }
     }
 

@@ -55,7 +55,7 @@ import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val scales = listOf(6f, 12f, 30f, 60f, 120f, 300f, 600f)
+private val scales = listOf(0.5f, 1f, 2f, 5f, 12f, 30f, 60f, 120f, 300f, 600f)
 
 @Composable
 fun SpeedScreen(traffic: Traffic, onBack: () -> Unit) {
@@ -93,7 +93,7 @@ fun SpeedScreen(traffic: Traffic, onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(12.dp))
-            Gauge(fraction, max, mbps)
+            Gauge(fraction, max, mbps, traffic.downSpeed)
             Spacer(Modifier.height(16.dp))
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -134,7 +134,7 @@ private fun InfoChip(icon: ImageVector, text: String) {
 }
 
 @Composable
-private fun Gauge(fraction: Float, max: Float, mbps: Float) {
+private fun Gauge(fraction: Float, max: Float, mbps: Float, bytesPerSec: Long) {
     Box(Modifier.size(290.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val start = 135f
@@ -169,7 +169,12 @@ private fun Gauge(fraction: Float, max: Float, mbps: Float) {
             for (i in 0..6) {
                 val a = Math.toRadians((start + sweep * i / 6f).toDouble())
                 val v = max * i / 6f
-                val label = if (v >= 10 || v == 0f) v.toInt().toString() else String.format(Locale.US, "%.0f", v)
+                val label = when {
+                    v == 0f -> "0"
+                    v >= 10 -> v.toInt().toString()
+                    v >= 1 -> String.format(Locale.US, "%.0f", v)
+                    else -> String.format(Locale.US, "%.1f", v)
+                }
                 drawContext.canvas.nativeCanvas.drawText(
                     label, c.x + rl * cos(a).toFloat(), c.y + rl * sin(a).toFloat() + paint.textSize / 3, paint,
                 )
@@ -185,8 +190,9 @@ private fun Gauge(fraction: Float, max: Float, mbps: Float) {
             drawPath(path, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.85f), Color.Transparent), start = tip, end = c))
         }
         Column(Modifier.padding(top = 200.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(String.format(Locale.US, "%.2f", mbps), color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.Medium)
-            Text("Mbps", color = TextSecondary, fontSize = 14.sp)
+            Text(formatSpeed(bytesPerSec), color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.Medium)
+            Text(if (mbps >= 1f) String.format(Locale.US, "%.2f Mbps", mbps) else String.format(Locale.US, "%.0f Kbps", mbps * 1000),
+                color = TextSecondary, fontSize = 13.sp)
         }
     }
 }

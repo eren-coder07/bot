@@ -3,6 +3,7 @@ package com.payloadtunnel.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -188,4 +189,36 @@ fun SignalBars(level: Int, modifier: Modifier = Modifier) {
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(text, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = modifier)
+}
+
+@Composable
+fun PrimaryButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val alpha = if (enabled && !loading) 1f else 0.45f
+    Box(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.horizontalGradient(listOf(Lime, LimeDim)))
+            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+            .let { if (enabled && !loading) it.clickable(onClick = onClick) else it }
+            .padding(vertical = 15.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (loading) {
+            androidx.compose.material3.CircularProgressIndicator(
+                color = OnLime, strokeWidth = 2.5.dp, modifier = Modifier.size(20.dp),
+            )
+        } else {
+            androidx.compose.material3.Text(
+                text, color = OnLime.copy(alpha = alpha), fontSize = 16.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            )
+        }
+    }
 }

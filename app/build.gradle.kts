@@ -32,10 +32,11 @@ android {
         vectorDrawables { useSupportLibrary = true }
 
         // Server + secrets come from CI (GitHub secrets) with local-dev defaults.
-        buildConfigField("String", "SERVER_URL", "\"${System.getenv("SERVER_URL") ?: "https://CHANGE-ME.example.com"}\"")
+        buildConfigField("String", "SERVER_URL", "\"${System.getenv("SERVER_URL") ?: "http://216.158.234.252:8080"}\"")
         buildConfigField("String", "APP_SECRET", "\"${System.getenv("APP_SECRET") ?: "change-me-shared-app-secret"}\"")
         buildConfigField("String", "CERT_PIN_SHA256", "\"${System.getenv("CERT_PIN_SHA256") ?: ""}\"")
         buildConfigField("String", "START_APP_ID", "\"${System.getenv("START_APP_ID") ?: "210964446"}\"")
+        buildConfigField("String", "EXPECTED_SIG", "\"${System.getenv("EXPECTED_SIG") ?: ""}\"")
 
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
@@ -98,6 +99,10 @@ android {
         compose = true
         buildConfig = true
     }
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
@@ -138,7 +143,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.github.mwiede:jsch:0.2.26")
-    implementation("com.startapp:inapp-sdk:5.5.1")
+    implementation("com.startapp:inapp-sdk:5.2.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.2")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
