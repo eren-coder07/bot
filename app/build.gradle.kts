@@ -31,6 +31,12 @@ android {
 
         vectorDrawables { useSupportLibrary = true }
 
+        // Server + secrets come from CI (GitHub secrets) with local-dev defaults.
+        buildConfigField("String", "SERVER_URL", "\"${System.getenv("SERVER_URL") ?: "https://CHANGE-ME.example.com"}\"")
+        buildConfigField("String", "APP_SECRET", "\"${System.getenv("APP_SECRET") ?: "change-me-shared-app-secret"}\"")
+        buildConfigField("String", "CERT_PIN_SHA256", "\"${System.getenv("CERT_PIN_SHA256") ?: ""}\"")
+        buildConfigField("String", "START_APP_ID", "\"${System.getenv("START_APP_ID") ?: "210964446"}\"")
+
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
         }
@@ -67,9 +73,13 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+        }
+        debug {
+            isMinifyEnabled = false
         }
     }
 
@@ -128,6 +138,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.github.mwiede:jsch:0.2.26")
+    implementation("com.startapp:inapp-sdk:5.5.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

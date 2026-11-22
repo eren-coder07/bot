@@ -237,8 +237,10 @@ fun ServerAndConfigSelectors(
     onSelectEntry: (List<Profile>) -> Unit,
     onSelectProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
+    hideDetails: Boolean = false,
     serverTrailing: (@Composable () -> Unit)? = null,
 ) {
+    fun detail(p: Profile) = if (hideDetails) "" else p.mode.shortDescription() + " · " + p.sshHost
     var serverOpen by remember { mutableStateOf(false) }
     var configOpen by remember { mutableStateOf(false) }
     val entry = entries.firstOrNull { e -> e.any { it.id == selected?.id } }
@@ -258,7 +260,7 @@ fun ServerAndConfigSelectors(
             SelectorField(
                 label = "Config",
                 title = selected.name,
-                subtitle = selected.mode.shortDescription() + " · " + selected.sshHost,
+                subtitle = detail(selected),
                 leading = { ConfigIcon(38) },
                 enabled = enabled,
                 onClick = { configOpen = true },
@@ -276,7 +278,7 @@ fun ServerAndConfigSelectors(
                     PickerItem(
                         id = first.group.ifBlank { first.id },
                         title = name,
-                        subtitle = if (e.size > 1) "${e.size} configs" else first.mode.shortDescription(),
+                        subtitle = if (e.size > 1) "${e.size} configs" else if (hideDetails) "" else first.mode.shortDescription(),
                         leading = { ProfileAvatar(name, 40.dp) },
                     )
                 },
@@ -296,7 +298,7 @@ fun ServerAndConfigSelectors(
         fun item(p: Profile) = PickerItem(
             id = p.id,
             title = if (p.group.isNotBlank() && entry?.contains(p) != true) "${p.group} · ${p.name}" else p.name,
-            subtitle = p.mode.shortDescription() + " · " + p.sshHost,
+            subtitle = detail(p),
             leading = { ConfigIcon(40) },
         )
         val recommended = (entry ?: listOf(selected)).map(::item)
