@@ -36,6 +36,8 @@ class Session(context: Context) {
         private set
     @Volatile var adRewardSeconds: Long = prefs.getLong(K_ADREWARD, 3600)
         private set
+    @Volatile var testAds: Boolean = false
+        private set
 
     fun hasKey(): Boolean = !_key.value.isNullOrBlank()
 
@@ -62,6 +64,7 @@ class Session(context: Context) {
         label = a.label
         startAppId = a.startAppId.ifBlank { startAppId }
         adRewardSeconds = a.adRewardSeconds
+        testAds = a.testAds
         _timeRemaining.value = a.timeRemaining
         _announcement.value = a.announcement
         prefs.edit()

@@ -18,6 +18,7 @@ DEFAULT_SETTINGS = {
     "bindDeviceToKey": "0",              # 1 = a key only works on the first device that used it
     "minClientVersion": "0",             # force-update gate (versionCode)
     "announcement": "",                  # shown in the app
+    "startAppTestAds": "0",              # 1 = Start.io test ads (for verifying the reward flow)
 }
 
 
@@ -47,6 +48,7 @@ def init(seed_configs=None):
                 adCount INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS ad_nonces (key TEXT, nonce TEXT, ts REAL, PRIMARY KEY(key, nonce));
+            CREATE TABLE IF NOT EXISTS devices (device TEXT PRIMARY KEY, firstSeen REAL, lastSeen REAL, key TEXT);
             CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT);
             """
         )
@@ -146,7 +148,8 @@ def _row_to_key(r):
     return {
         "key": r["key"], "label": r["label"] or "", "banned": bool(r["banned"]),
         "remaining": r["remaining"] or 0, "device": r["device"] or "", "created": r["created"],
-        "lastSeen": r["lastSeen"], "addedTotal": r["addedTotal"] or 0, "adCount": r["adCount"] or 0,
+        "lastSeen": r["lastSeen"], "lastHeartbeat": r["lastHeartbeat"], "addedTotal": r["addedTotal"] or 0,
+        "adCount": r["adCount"] or 0,
     }
 
 
@@ -190,6 +193,31 @@ def delete_key(key):
     with _LOCK, _conn() as c:
         c.execute("DELETE FROM keys WHERE key=?", (key,))
         c.execute("DELETE FROM ad_nonces WHERE key=?", (key,))
+
+
+def record_device(device, key):
+    if not device:
+        return
+    with _LOCK, _conn() as c:
+        now = time.time()
+        c.execute(
+            "INSERT INTO devices(device, firstSeen, lastSeen, key) VALUES(?,?,?,?) "
+            "ON CONFLICT(device) DO UPDATE SET lastSeen=excluded.lastSeen, key=excluded.key",
+            (device, now, now, key),
+        )
+
+
+def add_time_all(minutes, only_active_seconds=None):
+    """Add minutes to every (non-banned) key. If only_active_seconds given, only keys seen within that window."""
+    with _LOCK, _conn() as c:
+        secs = int(minutes) * 60
+        if only_active_seconds:
+            since = time.time() - only_active_seconds
+            n = c.execute("UPDATE keys SET remaining=MAX(0, remaining+?) WHERE banned=0 AND lastSeen>?",
+                          (secs, since)).rowcount
+        else:
+            n = c.execute("UPDATE keys SET remaining=MAX(0, remaining+?) WHERE banned=0", (secs,)).rowcount
+        return n
 
 
 def touch_key(key, device=None):
@@ -249,6 +277,7 @@ def stats():
             "configs": c.execute("SELECT COUNT(*) AS n FROM configs").fetchone()["n"],
             "keys": c.execute("SELECT COUNT(*) AS n FROM keys").fetchone()["n"],
             "banned": c.execute("SELECT COUNT(*) AS n FROM keys WHERE banned=1").fetchone()["n"],
-            "activeNow": c.execute("SELECT COUNT(*) AS n FROM keys WHERE lastHeartbeat>?", (now - 120,)).fetchone()["n"],
-            "onlineToday": c.execute("SELECT COUNT(*) AS n FROM keys WHERE lastSeen>?", (now - 86400,)).fetchone()["n"],
+            "installs": c.execute("SELECT COUNT(*) AS n FROM devices").fetchone()["n"],
+            "connectedNow": c.execute("SELECT COUNT(*) AS n FROM keys WHERE lastHeartbeat>?", (now - 120,)).fetchone()["n"],
+            "onlineToday": c.execute("SELECT COUNT(*) AS n FROM devices WHERE lastSeen>?", (now - 86400,)).fetchone()["n"],
         }

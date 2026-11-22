@@ -11,6 +11,9 @@ import com.startapp.sdk.adsbase.adlisteners.VideoListener
 class AdManager(private val activity: Activity) {
 
     fun showRewarded(onLoading: (Boolean) -> Unit, onReward: () -> Unit, onError: (String) -> Unit) {
+        runCatching {
+            com.startapp.sdk.adsbase.StartAppSDK.setTestAdsEnabled(com.payloadtunnel.Graph.session.testAds)
+        }
         val ad = StartAppAd(activity)
         var rewarded = false
         ad.setVideoListener(VideoListener { rewarded = true })

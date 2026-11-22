@@ -25,7 +25,7 @@ db.init(seed_configs=SEED)
 # Optional: create a ready-to-use access key on first boot (set BOOTSTRAP_KEY in the environment).
 _bootstrap = os.environ.get("BOOTSTRAP_KEY")
 if _bootstrap and not db.get_key(_bootstrap):
-    db.create_key(_bootstrap, "bootstrap", int(os.environ.get("BOOTSTRAP_MINUTES", "99999")))
+    db.create_key(_bootstrap, "bootstrap", int(os.environ.get("BOOTSTRAP_MINUTES", "60")))
 
 
 # ----------------------------- helpers -----------------------------
@@ -92,10 +92,12 @@ async def auth(request: Request, x_api_key: str = Header(None)):
         raise HTTPException(403, json.dumps({"error": "device",
                             "message": "This key is already in use on another device."}))
     db.touch_key(k["key"], device)
+    db.record_device(device, k["key"])
     return {"ok": True, "label": k["label"], "timeRemaining": k["remaining"],
             "banned": False, "freeSessionSeconds": db.setting_int("freeSessionMinutes", 60) * 60,
             "adRewardSeconds": db.setting_int("adRewardMinutes", 60) * 60,
-            "startAppId": s.get("startAppId", ""), "announcement": s.get("announcement", "")}
+            "startAppId": s.get("startAppId", ""), "announcement": s.get("announcement", ""),
+            "testAds": s.get("startAppTestAds", "0") == "1"}
 
 
 @app.get("/api/v1/configs")
@@ -228,6 +230,16 @@ def admin_delete_key(request: Request, key: str):
     require_admin(request)
     db.delete_key(key)
     return {"ok": True}
+
+
+@app.post("/admin/api/keys_addtime_all")
+async def admin_addtime_all(request: Request):
+    require_admin(request)
+    body = await _json(request)
+    minutes = int(body.get("minutes", 0))
+    only_active = 86400 if body.get("activeOnly") else None
+    n = db.add_time_all(minutes, only_active)
+    return {"ok": True, "updated": n}
 
 
 @app.post("/admin/api/settings")
