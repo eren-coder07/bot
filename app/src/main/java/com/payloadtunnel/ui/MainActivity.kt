@@ -88,11 +88,9 @@ class MainActivity : ComponentActivity() {
             if (Graph.session.hasKey()) Graph.refresh()
         }
 
-        val gate = !Graph.session.hasKey() || sessionState == Session.State.INVALID || sessionState == Session.State.BANNED
         when {
-            gate -> KeyGateScreen(sessionState) { key -> scope.launch { Graph.signIn(key) } }
-            configs.isEmpty() && sessionState == Session.State.CHECKING -> LoadingScreen()
-            configs.isEmpty() -> KeyGateScreen(Session.State.OFFLINE) { key -> scope.launch { Graph.signIn(key) } }
+            sessionState == Session.State.BANNED -> BlockedScreen(Graph.session.deviceId)
+            configs.isEmpty() -> LoadingScreen()
             else -> MainScaffold(
                 onConnect = ::connect,
                 onDisconnect = { TunnelVpnService.disconnect(this) },

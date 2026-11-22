@@ -76,7 +76,7 @@
   </header>
   <div class="tabs">
     <button class="on" data-tab="servers" onclick="tab('servers')">Configs</button>
-    <button data-tab="keys" onclick="tab('keys')">Access keys</button>
+    <button data-tab="keys" onclick="tab('keys')">Users</button>
     <button data-tab="settings" onclick="tab('settings')">Settings</button>
   </div>
   <main>
@@ -91,15 +91,6 @@
     </section>
 
     <section id="tab-keys" class="hide">
-      <div class="card">
-        <div class="grid2">
-          <div><label>How many</label><input id="kCount" type="number" value="1" min="1" max="500"></div>
-          <div><label>Minutes each</label><input id="kMin" type="number" value="60"></div>
-        </div>
-        <label>Label (optional)</label><input id="kLabel" placeholder="e.g. batch Nov, customer name">
-        <button style="margin-top:12px" onclick="genKeys()">Generate keys</button>
-        <div id="newKeys" class="keybox hide"></div>
-      </div>
       <div class="card">
         <div class="row tight" style="margin-bottom:10px;align-items:center">
           <label style="margin:0">Sort</label>
@@ -205,7 +196,7 @@ function tab(name){
 async function load(){
   state = await api('/admin/api/state');
   const s = state.stats;
-  $('#stats').innerHTML = `<b>${s.installs||0}</b> installs · <b>${s.connectedNow||0}</b> connected now · <b>${s.onlineToday||0}</b> today · ${s.keys} keys (${s.banned} banned) · ${s.configs} configs`;
+  $('#stats').innerHTML = `<b>${s.installs||0}</b> installs · <b>${s.connectedNow||0}</b> connected now · <b>${s.onlineToday||0}</b> today · ${s.keys} users (${s.banned} banned) · ${s.configs} configs`;
   renderConfigs(); renderKeys(); renderSettings();
 }
 
@@ -282,10 +273,10 @@ function renderKeys(){
     }
   });
   const t=$('#keyTable');
-  t.innerHTML='<tr><th></th><th>Key</th><th>Label</th><th>Time left</th><th>Seen</th><th>Ads</th><th>Status</th><th></th></tr>'+
+  t.innerHTML='<tr><th></th><th>User ID</th><th>Note</th><th>Time left</th><th>Seen</th><th>Ads</th><th>Status</th><th></th></tr>'+
     rows.map(k=>`<tr>
       <td>${isOnline(k)?'<span class="dot on" title="connected"></span>':'<span class="dot" title="offline"></span>'}</td>
-      <td class="mono">${esc(k.key)}</td><td class="muted">${esc(k.label||'—')}</td>
+      <td class="mono" title="${esc(k.key)}" style="cursor:pointer" onclick="copyId('${esc(k.key)}')">${esc(k.key.length>14?k.key.slice(0,12)+'…':k.key)}</td><td class="muted" style="cursor:pointer" onclick="renameUser('${esc(k.key)}')">${esc(k.label||'+ note')}</td>
       <td title="click to set" style="cursor:pointer" onclick="setTime('${k.key}')">${fmtTime(k.remaining)}</td>
       <td class="muted">${lastSeenTxt(k)}</td><td class="muted">${k.adCount}</td>
       <td>${k.banned?'<span class="pill off">banned</span>':'<span class="pill on">active</span>'}</td>
@@ -302,6 +293,9 @@ async function genKeys(){
 }
 async function addTime(key){ const m=prompt('Add how many minutes? (negative to remove)','60'); if(m===null)return;
   await api('/admin/api/keys/'+key,'POST',{addMinutes:parseInt(m)||0}); load(); }
+function copyId(id){ navigator.clipboard?.writeText(id); alert('Copied user ID'); }
+async function renameUser(key){ const l=prompt('Note / name for this user:',''); if(l===null)return;
+  await api('/admin/api/keys/'+key,'POST',{label:l}); load(); }
 async function setTime(key){ const m=prompt('Set exact time (minutes):','60'); if(m===null)return;
   await api('/admin/api/keys/'+key,'POST',{setMinutes:parseInt(m)||0}); load(); }
 async function addTimeAll(onlineOnly){ const m=prompt('Add how many minutes to '+(onlineOnly?'ONLINE':'ALL')+' users?','60'); if(m===null)return;

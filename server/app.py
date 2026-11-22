@@ -82,6 +82,27 @@ def ping():
             "announcement": s.get("announcement", "")}
 
 
+@app.post("/api/v1/register")
+async def register(request: Request, x_api_key: str = Header(None)):
+    device = (x_api_key or "").strip()
+    if len(device) < 8:
+        raise HTTPException(400, "bad device id")
+    s = db.get_settings()
+    k = db.get_key(device)
+    if k is None:
+        db.create_key(device, "", db.setting_int("freeSessionMinutes", 60))  # first visit: 1 hour
+        k = db.get_key(device)
+    if k["banned"]:
+        raise HTTPException(403, json.dumps({"error": "banned", "message": "Access blocked."}))
+    db.touch_key(device, device)
+    db.record_device(device, device)
+    return {"ok": True, "timeRemaining": k["remaining"], "banned": False, "label": k["label"],
+            "freeSessionSeconds": db.setting_int("freeSessionMinutes", 60) * 60,
+            "adRewardSeconds": db.setting_int("adRewardMinutes", 60) * 60,
+            "startAppId": s.get("startAppId", ""), "announcement": s.get("announcement", ""),
+            "testAds": s.get("startAppTestAds", "0") == "1"}
+
+
 @app.post("/api/v1/auth")
 async def auth(request: Request, x_api_key: str = Header(None)):
     k = require_key(x_api_key)

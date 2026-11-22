@@ -140,15 +140,23 @@ fun AccountScreen(
                 }
             }
 
-            // Account key
+            // Your ID (give this to the admin for more time)
             GlassCard(Modifier.fillMaxWidth()) {
-                Text("Access key", color = TextSecondary, fontSize = 12.sp)
-                Text(mask(keyVal), color = TextPrimary, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
-                Spacer(Modifier.height(12.dp))
-                RowAction(Icons.Filled.Login, "Use a different key", "Sign out and enter another key") {
-                    TunnelVpnService.disconnect(context)
-                    Graph.session.clearKey()
+                Text("Your ID", color = TextSecondary, fontSize = 12.sp)
+                val id = keyVal ?: ""
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (id.length > 8) id.take(8) else id, color = TextPrimary, fontSize = 18.sp,
+                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
+                    )
+                    Box(
+                        Modifier.size(34.dp).clip(CircleShape).background(Color_white()).clickable {
+                            copy(context, id); toast(context, "ID copied")
+                        },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.ContentCopy, "Copy", tint = Lime, modifier = Modifier.size(16.dp)) }
                 }
+                Text("Share this ID with the admin to get more time.", color = TextSecondary, fontSize = 12.sp)
             }
 
             Text(

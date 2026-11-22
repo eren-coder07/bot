@@ -170,6 +170,7 @@ class TunnelVpnService : VpnService() {
             }
         }
 
+        runCatching { Graph.api.heartbeat(Graph.session.deviceId, connected = false) }
         shutdown(if (stopRequested) null else lastError)
     }
 
@@ -375,14 +376,8 @@ class TunnelVpnService : VpnService() {
 
     /** Confirms the key is valid, not banned, and has time left. Updates Session. */
     private suspend fun checkTimeBeforeConnect(): Boolean {
-        val key = Graph.session.key.value
-        if (key.isNullOrBlank()) {
-            AppLog.fail("Please enter your access key.")
-            TunnelStatus.set(Status.ERROR, "No access key")
-            return false
-        }
         return try {
-            val auth = Graph.api.auth(key, Graph.session.deviceId)
+            val auth = Graph.api.register(Graph.session.deviceId)
             Graph.session.applyAuth(auth)
             if (auth.timeRemaining <= 0) {
                 AppLog.warn("No time left. Watch an ad to get more.")
@@ -392,8 +387,7 @@ class TunnelVpnService : VpnService() {
         } catch (e: ApiException) {
             when (e.code) {
                 "banned" -> { Graph.session.setState(Session.State.BANNED); AppLog.fail("Access blocked.") }
-                "invalid", "device" -> { Graph.session.setState(Session.State.INVALID); AppLog.fail("Your access key is not valid.") }
-                else -> AppLog.dbg("auth check failed: ${e.message}")
+                else -> AppLog.dbg("register failed: ${e.message}")
             }
             // Allow connecting if the control server is unreachable but we still hold local time.
             if (e.code == "network" && Graph.session.timeRemaining.value > 0) true
