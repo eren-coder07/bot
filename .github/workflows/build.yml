@@ -18,6 +18,12 @@ jobs:
     env:
       VERSION_CODE: ${{ github.run_number }}
       VERSION_NAME: 1.0.${{ github.run_number }}
+      # Server/secrets baked into the APK (set these in repo Settings -> Secrets).
+      # APP_SECRET MUST equal the control server's APP_SECRET or config decryption fails.
+      SERVER_URL: ${{ secrets.SERVER_URL }}
+      APP_SECRET: ${{ secrets.APP_SECRET }}
+      CERT_PIN_SHA256: ${{ secrets.CERT_PIN_SHA256 }}
+      START_APP_ID: ${{ secrets.START_APP_ID || '210964446' }}
     steps:
       - name: Checkout (with tun2socks submodule)
         uses: actions/checkout@v4
@@ -85,6 +91,14 @@ jobs:
 
       - name: Build release APK
         run: ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Verify R8 kept the load-bearing names (JSch reflection, JNI class)
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          jsch=$(unzip -p "$apk" 'classes*.dex' | strings | grep -c jcraft || true)
+          tproxy=$(unzip -p "$apk" 'classes*.dex' | strings | grep -c TProxyNative || true)
+          echo "jcraft refs: $jsch, TProxyNative refs: $tproxy"
+          [ "$jsch" -gt 0 ] && [ "$tproxy" -gt 0 ]
 
       - name: Verify signature and rename
         run: |

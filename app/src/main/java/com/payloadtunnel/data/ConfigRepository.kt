@@ -51,6 +51,14 @@ class ConfigRepository(context: Context) {
         select(entry.firstOrNull { it.id == last }?.id ?: entry.first().id)
     }
 
+    /** Test hook: injects configs without the network (screenshot tests only, never used at runtime). */
+    fun seedForTests(list: List<Profile>) {
+        _configs.value = list
+        if (_selectedId.value == null || list.none { it.id == _selectedId.value }) {
+            select(list.firstOrNull()?.id)
+        }
+    }
+
     /** Groups configs for display: each group once (first-seen order), ungrouped alone. */
     fun entries(list: List<Profile> = _configs.value): List<List<Profile>> {
         val out = LinkedHashMap<String, MutableList<Profile>>()

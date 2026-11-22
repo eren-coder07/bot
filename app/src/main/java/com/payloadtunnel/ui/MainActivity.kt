@@ -30,11 +30,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Adjust
-import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,20 +49,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.payloadtunnel.Graph
 import com.payloadtunnel.core.AppLog
 import com.payloadtunnel.core.Status
 import com.payloadtunnel.core.TunnelStatus
 import com.payloadtunnel.data.Profile
+import com.payloadtunnel.data.Session
 import com.payloadtunnel.vpn.TunnelVpnService
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 enum class Tab(val label: String, val icon: ImageVector) {
     VPN("VPN", Icons.Outlined.Adjust),
-    SERVERS("Servers", Icons.Outlined.Public),
     SPEED("Speed Test", Icons.Outlined.Speed),
     LOGS("Logs", Icons.AutoMirrored.Outlined.ReceiptLong),
 }
@@ -66,6 +74,13 @@ enum class Tab(val label: String, val icon: ImageVector) {
 class MainActivity : ComponentActivity() {
 
     private var pendingProfileId: String? = null
+    private lateinit var adManager: AdManager
+
+    /** Shows the "out of time — watch an ad?" dialog. */
+    private val adPrompt = MutableStateFlow(false)
+
+    /** True while a rewarded ad is loading/showing (covers the whole screen). */
+    private val adLoading = MutableStateFlow(false)
 
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val id = pendingProfileId
@@ -87,6 +102,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        adManager = AdManager(this)
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -97,17 +113,18 @@ class MainActivity : ComponentActivity() {
                 MainScreen(
                     onConnect = ::connect,
                     onDisconnect = { TunnelVpnService.disconnect(this) },
+                    onWatchAd = ::watchAd,
+                    adPrompt = adPrompt,
+                    adLoading = adLoading,
                 )
             }
         }
     }
 
+    /** Starts the tunnel — only with time left on the key, otherwise prompts the ad. */
     private fun connect(profile: Profile) {
-        val problems = validate(profile)
-        if (problems != null) {
-            AppLog.e(problems)
-            TunnelStatus.set(Status.ERROR, problems)
-            Toast.makeText(this, problems, Toast.LENGTH_LONG).show()
+        if (Graph.session.timeRemaining.value <= 0) {
+            adPrompt.value = true
             return
         }
         val intent = VpnService.prepare(this)
@@ -123,67 +140,124 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun validate(p: Profile): String? = when {
-        p.sshHost.isBlank() -> "SSH host is empty"
-        p.sshPort !in 1..65535 -> "SSH port is invalid"
-        p.mode.isSsh && p.username.isBlank() -> "SSH username is empty"
-        p.mode.isVless && runCatching { java.util.UUID.fromString(p.vlessUuid.trim()) }.isFailure -> "VLESS UUID is invalid"
-        p.mode.usesProxy && p.proxy.isNotBlank() && Profile.parseHostPort(p.proxy) == null ->
-            "Remote proxy must be host:port"
-        else -> null
+    /** Shows a rewarded video; only when the video completes does the server credit the time. */
+    private fun watchAd(onLoading: (Boolean) -> Unit) {
+        val key = Graph.session.key.value
+        if (key.isNullOrBlank()) {
+            onLoading(false)
+            Toast.makeText(this, "Sign in first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        adManager.showRewarded(
+            onLoading = onLoading,
+            onReward = {
+                lifecycleScope.launch {
+                    try {
+                        val remaining = Graph.api.adReward(key, UUID.randomUUID().toString())
+                        Graph.session.setTime(remaining)
+                        Toast.makeText(this@MainActivity, "+${remaining / 60} min added", Toast.LENGTH_LONG).show()
+                    } catch (e: Exception) {
+                        AppLog.w("ad reward failed: ${e.message}")
+                        Toast.makeText(this@MainActivity, "Couldn't add the time. Try again.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onError = { msg -> Toast.makeText(this, msg, Toast.LENGTH_LONG).show() },
+        )
     }
 }
 
 @Composable
-private fun MainScreen(onConnect: (Profile) -> Unit, onDisconnect: () -> Unit) {
+private fun MainScreen(
+    onConnect: (Profile) -> Unit,
+    onDisconnect: () -> Unit,
+    onWatchAd: ((Boolean) -> Unit) -> Unit,
+    adPrompt: MutableStateFlow<Boolean>,
+    adLoading: MutableStateFlow<Boolean>,
+) {
+    val sessionState by Graph.session.state.collectAsState()
+    val timeRemaining by Graph.session.timeRemaining.collectAsState()
+    val configs by Graph.configs.configs.collectAsState()
+    val prompt by adPrompt.collectAsState()
+    val loading by adLoading.collectAsState()
     var tab by rememberSaveable { mutableStateOf(Tab.VPN) }
-    var editing by remember { mutableStateOf<Profile?>(null) }
-    var settingsOpen by rememberSaveable { mutableStateOf(false) }
-    var pickingApps by rememberSaveable { mutableStateOf(false) }
+    var accountOpen by rememberSaveable { mutableStateOf(false) }
     val traffic = rememberTraffic()
 
+    // Validate the key and refresh configs each time the app starts.
+    LaunchedEffect(Unit) { Graph.refresh() }
+
+    // The gate shows until the key is valid. A cached session (time or configs) keeps the
+    // app usable while the control server is unreachable.
+    val showGate = when (sessionState) {
+        Session.State.NO_KEY, Session.State.INVALID, Session.State.BANNED -> true
+        Session.State.CHECKING, Session.State.OFFLINE -> timeRemaining <= 0 && configs.isEmpty()
+        Session.State.VALID -> false
+    }
+
     AppBackground {
-        val edit = editing
-        when {
-            edit != null -> {
-                BackHandler { editing = null }
-                ProfileEditor(
-                    initial = edit,
-                    onSave = {
-                        Graph.profiles.save(it)
-                        editing = null
+        if (showGate) {
+            KeyGateScreen()
+        } else {
+            if (tab != Tab.VPN) BackHandler { tab = Tab.VPN }
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f)) {
+                    when (tab) {
+                        Tab.VPN -> HomeScreen(
+                            traffic = traffic,
+                            onConnect = onConnect,
+                            onDisconnect = onDisconnect,
+                            onOpenAccount = { accountOpen = true },
+                            onOpenSpeed = { tab = Tab.SPEED },
+                            onWatchAd = { onWatchAd { adLoading.value = it } },
+                        )
+                        Tab.SPEED -> SpeedScreen(traffic, onBack = { tab = Tab.VPN })
+                        Tab.LOGS -> LogScreen()
+                    }
+                }
+                BottomBar(tab) { tab = it }
+            }
+
+            if (accountOpen) AccountSheet(
+                onDismiss = { accountOpen = false },
+                onWatchAd = { onWatchAd { adLoading.value = it } },
+            )
+
+            if (prompt) {
+                AlertDialog(
+                    onDismissRequest = { adPrompt.value = false },
+                    title = { Text("You're out of time") },
+                    text = {
+                        Text("Watch a short ad to get +${Graph.session.adRewardSeconds / 60} more minutes of VPN.")
                     },
-                    onCancel = { editing = null },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            adPrompt.value = false
+                            onWatchAd { adLoading.value = it }
+                        }) { Text("Watch ad", color = Lime) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { adPrompt.value = false }) { Text("Not now") }
+                    },
                 )
             }
-            pickingApps -> {
-                BackHandler { pickingApps = false }
-                AppPickerScreen(onDone = { pickingApps = false })
-            }
-            settingsOpen -> {
-                BackHandler { settingsOpen = false }
-                SettingsScreen(onBack = { settingsOpen = false }, onPickApps = { pickingApps = true })
-            }
-            else -> {
-                if (tab != Tab.VPN) BackHandler { tab = Tab.VPN }
-                Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.weight(1f)) {
-                        when (tab) {
-                            Tab.VPN -> HomeScreen(
-                                traffic = traffic,
-                                onConnect = onConnect,
-                                onDisconnect = onDisconnect,
-                                onOpenMenu = { settingsOpen = true },
-                                onOpenSpeed = { tab = Tab.SPEED },
-                                onOpenServers = { tab = Tab.SERVERS },
-                            )
-                            Tab.SERVERS -> ProfilesScreen(onBack = { tab = Tab.VPN }, onEdit = { editing = it })
-                            Tab.SPEED -> SpeedScreen(traffic, onBack = { tab = Tab.VPN })
-                            Tab.LOGS -> LogScreen()
-                        }
-                    }
-                    BottomBar(tab) { tab = it }
-                }
+        }
+
+        if (loading) AdLoadingOverlay()
+    }
+}
+
+@Composable
+private fun AdLoadingOverlay() {
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.65f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        GlassCard(padding = 22.dp) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Lime, strokeWidth = 3.dp, modifier = Modifier.size(34.dp))
+                Spacer(Modifier.height(14.dp))
+                Text("Loading ad…", color = TextPrimary, fontSize = 14.sp)
             }
         }
     }

@@ -250,7 +250,7 @@ fun ServerAndConfigSelectors(
         SelectorField(
             label = "Server",
             title = entryName,
-            subtitle = if ((entry?.size ?: 0) > 1) "${entry!!.size} configs" else selected?.mode?.shortDescription() ?: "Tap to add one",
+            subtitle = if ((entry?.size ?: 0) > 1) "${entry!!.size} configs" else if (hideDetails) "" else selected?.mode?.shortDescription() ?: "Tap to add one",
             leading = { ProfileAvatar(entryName, 38.dp) },
             enabled = enabled,
             onClick = { serverOpen = true },

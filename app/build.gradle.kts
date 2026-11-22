@@ -127,6 +127,9 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.0")
+    // registerForActivityResult lint (InvalidFragmentVersionForActivityResult) requires fragment >= 1.3.0;
+    // transitively the project only got 1.1.0.
+    implementation("androidx.fragment:fragment-ktx:1.8.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.3")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.3")
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
@@ -138,7 +141,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.github.mwiede:jsch:0.2.26")
-    implementation("com.startapp:inapp-sdk:5.5.1")
+    // 5.3.1 is the newest Start.io SDK whose AAR metadata still allows compileSdk 34
+    // (5.3.2+ require compileSdk 36/37). Same rewarded-video API as 5.5.1.
+    implementation("com.startapp:inapp-sdk:5.3.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

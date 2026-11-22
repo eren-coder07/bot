@@ -4,9 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.payloadtunnel.Graph
@@ -14,6 +14,8 @@ import com.payloadtunnel.core.Status
 import com.payloadtunnel.core.TunnelState
 import com.payloadtunnel.core.TunnelStatus
 import com.payloadtunnel.data.Profile
+import com.payloadtunnel.data.TunnelMode
+import com.payloadtunnel.net.ApiClient
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -27,16 +29,49 @@ import org.robolectric.annotation.GraphicsMode
 class ScreenshotTest {
     private val out = System.getProperty("user.dir") + "/build/screenshots"
 
+    private val configs = listOf(
+        Profile(
+            id = "freevip-win6-1", name = "WIN*6 1", group = "Free Vip",
+            sshHost = "kn.spedo.qzz.io", sshPort = 80,
+            mode = TunnelMode.SSH_PROXY_PAYLOAD, proxy = "help.twitter.com:8080",
+        ),
+        Profile(
+            id = "freevip-iam6-ip10", name = "IAM*6 IP 10", group = "Free Vip",
+            sshHost = "kn.spedo.qzz.io", sshPort = 80,
+            mode = TunnelMode.SSH_PROXY_PAYLOAD, proxy = "investor.snap.com:80",
+        ),
+        Profile(
+            id = "freevip-iam6-ssl", name = "IAM*6 SSL", group = "Free Vip",
+            sshHost = "85.190.101.111", sshPort = 443,
+            mode = TunnelMode.SSH_TLS, sni = "google.com",
+        ),
+        Profile(
+            id = "freevip-iam6-vless", name = "IAM*6 VLESS", group = "Free Vip",
+            sshHost = "104.18.37.127", sshPort = 443,
+            mode = TunnelMode.VLESS_WS_TLS, sni = "bilal1.eyadvip.site",
+        ),
+    )
+
     private fun setup(connected: Boolean) {
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
         Graph.init(app)
-        if (Graph.profiles.profiles.value.none { it.name == "My server" }) {
-            Graph.profiles.save(Profile(name = "My server", sshHost = "de1.example.com", sshPort = 443))
-        }
-        Graph.profiles.select("freevip-iam6-ip10")
+        Graph.configs.seedForTests(configs)
+        Graph.configs.select("freevip-iam6-ip10")
+        Graph.session.saveKey("ab12-cd34-ef56")
+        Graph.session.applyAuth(
+            ApiClient.Auth(
+                label = "Free user",
+                timeRemaining = if (connected) 3_595 else 3_600,
+                freeSessionSeconds = 3_600, adRewardSeconds = 3_600,
+                startAppId = "",
+                announcement = "Welcome! All Free Vip servers are online.",
+            ),
+        )
         TunnelStatus.update {
-            if (connected) TunnelState(Status.CONNECTED, profileName = "IAM*6 IP 10", connectedAt = System.currentTimeMillis() - 2_936_000, socksPort = 1080, pingMs = 167)
-            else TunnelState()
+            if (connected) TunnelState(
+                Status.CONNECTED, profileName = "IAM*6 IP 10",
+                connectedAt = System.currentTimeMillis() - 2_936_000, socksPort = 1080, pingMs = 167,
+            ) else TunnelState()
         }
     }
 
@@ -64,52 +99,63 @@ class ScreenshotTest {
         shot("2_home_disconnected") { HomeScreen(Traffic(), {}, {}, {}, {}, {}) }
     }
 
-    @Test fun speed() {
-        setup(true)
-        shot("3_speed") { SpeedScreen(fakeTraffic(), {}) }
+    @Test fun home_expired() {
+        setup(false)
+        Graph.session.setTime(0)
+        shot("3_home_expired") { HomeScreen(Traffic(), {}, {}, {}, {}, {}) }
     }
 
-    @Test fun servers() {
+    @Test fun key_gate() {
+        setup(false)
+        Graph.session.clearKey()
+        shot("4_key_gate") { KeyGateScreen() }
+    }
+
+    @Test fun account_sheet() {
         setup(true)
-        shot("4_servers") { ProfilesScreen({}, {}) }
+        shot("5_account_sheet") { AccountSheetContent({}, {}) }
+    }
+
+    @Test fun speed() {
+        setup(true)
+        shot("6_speed") { SpeedScreen(fakeTraffic(), {}) }
     }
 
     @Test fun config_picker() {
         setup(false)
-        val all = Graph.profiles.profiles.value
+        val all = Graph.configs.configs.value
         val group = all.filter { it.group.isNotBlank() }
-        fun item(p: Profile) = PickerItem(p.id, p.name, p.mode.shortDescription() + " · " + p.sshHost) { ConfigIcon(40) }
+        fun item(p: Profile) = PickerItem(p.id, p.name, "") { ConfigIcon(40) }
         shot("7_config_picker") {
             Box(Modifier.padding(horizontal = 20.dp, vertical = 40.dp)) {
-                PickerContent("Free Vip", listOf("Recommended" to group.map(::item), "All configs" to all.map(::item)), "freevip-iam6-ip10", true, {})
+                PickerContent(
+                    "Free Vip",
+                    listOf("Recommended" to group.map(::item), "All configs" to all.map(::item)),
+                    "freevip-iam6-ip10", true, {},
+                )
             }
         }
     }
 
     @Test fun server_picker() {
         setup(false)
-        val entries = Graph.profiles.entries()
+        val entries = Graph.configs.entries()
         shot("8_server_picker") {
             Box(Modifier.padding(horizontal = 20.dp, vertical = 40.dp)) {
                 PickerContent(
                     "Choose server",
-                    listOf("Servers" to entries.map { e ->
-                        val n = e.first().group.ifBlank { e.first().name }
-                        PickerItem(e.first().group.ifBlank { e.first().id }, n, if (e.size > 1) "${e.size} configs" else e.first().mode.shortDescription()) { ProfileAvatar(n, 40.dp) }
-                    }),
+                    listOf(
+                        "Servers" to entries.map { e ->
+                            val n = e.first().group.ifBlank { e.first().name }
+                            PickerItem(
+                                e.first().group.ifBlank { e.first().id }, n,
+                                if (e.size > 1) "${e.size} configs" else "",
+                            ) { ProfileAvatar(n, 40.dp) }
+                        },
+                    ),
                     "Free Vip", false, {},
                 )
             }
         }
-    }
-
-    @Test fun settings() {
-        setup(false)
-        shot("5_settings") { SettingsScreen({}, {}) }
-    }
-
-    @Test fun editor() {
-        setup(false)
-        shot("6_editor") { ProfileEditor(Profile.defaultProfile(), {}, {}) }
     }
 }

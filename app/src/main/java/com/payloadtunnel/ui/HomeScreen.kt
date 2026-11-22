@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,7 +16,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,27 +25,33 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +70,7 @@ import com.payloadtunnel.Graph
 import com.payloadtunnel.core.Status
 import com.payloadtunnel.core.TunnelStatus
 import com.payloadtunnel.data.Profile
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -73,46 +80,73 @@ fun HomeScreen(
     traffic: Traffic,
     onConnect: (Profile) -> Unit,
     onDisconnect: () -> Unit,
-    onOpenMenu: () -> Unit,
+    onOpenAccount: () -> Unit,
     onOpenSpeed: () -> Unit,
-    onOpenServers: () -> Unit,
+    onWatchAd: () -> Unit,
 ) {
-    val profiles by Graph.profiles.profiles.collectAsState()
-    val selectedId by Graph.profiles.selectedId.collectAsState()
+    val configs by Graph.configs.configs.collectAsState()
+    val selectedId by Graph.configs.selectedId.collectAsState()
+    val serverTime by Graph.session.timeRemaining.collectAsState()
+    val announcement by Graph.session.announcement.collectAsState()
     val state by TunnelStatus.state.collectAsState()
-    val selected = profiles.firstOrNull { it.id == selectedId } ?: profiles.firstOrNull()
+    val adMinutes = remember { Graph.session.adRewardSeconds / 60 }
+
+    val selected = configs.firstOrNull { it.id == selectedId } ?: configs.firstOrNull()
     val active = state.status.isActive
     val connected = state.status == Status.CONNECTED
+
+    // Time left: ticks locally every second while connected; re-syncs whenever the
+    // server answers (auth, heartbeat, ad reward).
+    var timeLeft by remember { mutableLongStateOf(serverTime) }
+    LaunchedEffect(serverTime) { timeLeft = serverTime }
+    LaunchedEffect(connected) {
+        while (connected) {
+            delay(1000)
+            if (timeLeft > 0) timeLeft--
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Header: menu · mode pill · speed
+        // Header: account · speed
         Row(
             Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircleIconButton(Icons.Outlined.Menu, "Menu", onOpenMenu)
+            CircleIconButton(Icons.Outlined.Menu, "Account", onOpenAccount)
             Spacer(Modifier.weight(1f))
-            Pill(
-                selected?.mode?.label?.removePrefix("SSH-")?.removePrefix("SSH ") ?: "SSH",
-                icon = Icons.Filled.Bolt, iconTint = Color(0xFFFFC93C),
-                modifier = Modifier.padding(end = 8.dp), onClick = onOpenServers,
-            )
             CircleIconButton(Icons.Outlined.Speed, "Speed test", onOpenSpeed)
         }
 
-        Spacer(Modifier.height(18.dp))
+        // Announcement banner (set from the admin panel)
+        if (announcement.isNotBlank()) {
+            GlassCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp), padding = 12.dp) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Campaign, null, tint = Lime, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(announcement, color = TextPrimary, fontSize = 12.sp, lineHeight = 16.sp)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
         StatusPill(state.status)
         Spacer(Modifier.height(10.dp))
+        Text("TIME LEFT", color = TextSecondary, fontSize = 11.sp, letterSpacing = 1.5.sp)
         Text(
-            if (connected && state.connectedAt > 0) formatDuration(traffic.now - state.connectedAt) else "00:00:00",
-            color = TextPrimary, fontSize = 44.sp, fontWeight = FontWeight.Normal, letterSpacing = 1.sp,
+            formatDuration(timeLeft * 1000),
+            color = if (timeLeft <= 0) Failed else TextPrimary,
+            fontSize = 44.sp, fontWeight = FontWeight.Normal, letterSpacing = 1.sp,
         )
         val msg = state.message
         Text(
-            msg ?: if (connected) "Connected to ${state.profileName ?: selected?.name ?: ""}" else selected?.name ?: "No profile",
+            msg ?: when {
+                connected -> "Connected to ${state.profileName ?: selected?.name ?: ""}"
+                selected != null -> selected.name
+                else -> "No server loaded yet"
+            },
             color = if (state.status == Status.ERROR) Failed else TextSecondary,
             fontSize = 13.sp, textAlign = TextAlign.Center, maxLines = 3,
             modifier = Modifier.padding(horizontal = 32.dp, vertical = 4.dp),
@@ -121,18 +155,33 @@ fun HomeScreen(
         Spacer(Modifier.height(8.dp))
         PowerButton(
             status = state.status,
+            enabled = timeLeft > 0,
             onClick = { if (active) onDisconnect() else selected?.let(onConnect) },
         )
 
-        // Server + config pickers (tap to choose, like a dropdown)
-        val entries = remember(profiles) { Graph.profiles.entries(profiles) }
+        // Time-credit actions: prominent ad button when out of time, small one otherwise.
+        if (timeLeft <= 0) {
+            Spacer(Modifier.height(6.dp))
+            WatchAdButton(
+                text = "Watch ad (+$adMinutes min)",
+                onClick = onWatchAd,
+                modifier = Modifier.padding(horizontal = 24.dp).fillMaxWidth(),
+            )
+        } else {
+            Spacer(Modifier.height(2.dp))
+            Pill("＋ Add time", icon = Icons.Filled.Add, onClick = onWatchAd)
+        }
+
+        // Server + config pickers: names only, no hosts/modes/payloads in the user UI.
+        val entries = remember(configs) { Graph.configs.entries(configs) }
         ServerAndConfigSelectors(
-            profiles = profiles,
+            profiles = configs,
             entries = entries,
             selected = selected,
             enabled = !active,
-            onSelectEntry = { Graph.profiles.selectEntry(it) },
-            onSelectProfile = { Graph.profiles.select(it) },
+            hideDetails = true,
+            onSelectEntry = { Graph.configs.selectEntry(it) },
+            onSelectProfile = { Graph.configs.select(it) },
             modifier = Modifier.padding(horizontal = 16.dp),
             serverTrailing = {
                 Text(
@@ -170,13 +219,16 @@ private fun StatusPill(status: Status) {
 }
 
 @Composable
-private fun PowerButton(status: Status, onClick: () -> Unit) {
+private fun PowerButton(status: Status, enabled: Boolean = true, onClick: () -> Unit) {
     val connected = status == Status.CONNECTED
     val busy = status.isActive && !connected
     val transition = rememberInfiniteTransition(label = "rings")
     val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(if (busy) 2500 else 30000, easing = LinearEasing)), label = "spin")
     val pulse by transition.animateFloat(0.85f, 1f, infiniteRepeatable(tween(1400), RepeatMode.Reverse), label = "pulse")
-    val glow by animateFloatAsState(if (connected) 1f else if (busy) 0.6f else 0.25f, tween(600), label = "glow")
+    val glow by animateFloatAsState(
+        if (connected) 1f else if (busy) 0.6f else if (enabled) 0.25f else 0.12f,
+        tween(600), label = "glow",
+    )
 
     Box(Modifier.size(250.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
@@ -210,16 +262,22 @@ private fun PowerButton(status: Status, onClick: () -> Unit) {
             // thin ring around the button
             drawCircle(Lime.copy(alpha = 0.25f + 0.35f * glow), radius = rOuter * 0.55f, center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
         }
-        val fill = if (connected) Lime else if (busy) Lime.copy(alpha = 0.75f) else Color(0xFF263019)
-        val fg = if (connected || busy) OnLime else Lime
+        val dimmed = !enabled && !busy && !connected
+        val fill = if (connected) Lime else if (busy) Lime.copy(alpha = 0.75f) else if (dimmed) Color(0xFF1B2213) else Color(0xFF263019)
+        val fg = if (connected || busy) OnLime else Lime.copy(alpha = if (dimmed) 0.45f else 1f)
         Box(
             Modifier.size(140.dp).clip(CircleShape)
                 .background(
                     if (connected || busy) Brush.radialGradient(listOf(Color(0xFFE6FF6B), fill))
-                    else Brush.radialGradient(listOf(Color(0xFF34421F), fill)),
+                    else Brush.radialGradient(listOf(if (dimmed) Color(0xFF232B17) else Color(0xFF34421F), fill)),
                 )
-                .border(2.dp, Lime.copy(alpha = if (connected) 0.0f else 0.5f), CircleShape)
-                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+                .border(2.dp, Lime.copy(alpha = if (connected || dimmed) 0.0f else 0.5f), CircleShape)
+                .clickable(
+                    enabled = enabled,
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -239,6 +297,28 @@ private fun PowerButton(status: Status, onClick: () -> Unit) {
     }
 }
 
+/** The prominent lime call to action shown when the user is out of time. */
+@Composable
+private fun WatchAdButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = Lime,
+        border = BorderStroke(1.dp, LimeDeep),
+        modifier = modifier.height(52.dp),
+    ) {
+        Row(
+            Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.OndemandVideo, null, tint = OnLime, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(text, color = OnLime, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
 @Composable
 private fun MiniStat(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, speed: String, total: String, modifier: Modifier) {
     GlassCard(modifier, padding = 12.dp) {
@@ -253,39 +333,5 @@ private fun MiniStat(icon: androidx.compose.ui.graphics.vector.ImageVector, labe
                 Text("$label · $total", color = TextSecondary, fontSize = 11.sp, maxLines = 1)
             }
         }
-    }
-}
-
-@Composable
-private fun ServerCard(
-    title: String,
-    subtitle: String,
-    isSelected: Boolean,
-    isActive: Boolean,
-    locked: Boolean,
-    onSelect: () -> Unit,
-    onConnect: () -> Unit,
-) {
-    GlassCard(
-        Modifier.width(176.dp).clickable(enabled = !locked, onClick = onSelect),
-        highlighted = isSelected,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ProfileAvatar(title, 34.dp)
-            Spacer(Modifier.weight(1f))
-            Pill(
-                if (isActive) "Active" else "Connect",
-                textColor = if (isActive) OnLime else TextPrimary,
-                background = if (isActive) Lime else Color.White.copy(alpha = 0.06f),
-                border = if (isActive) Lime else Color.White.copy(alpha = 0.16f),
-                onClick = if (locked) null else onConnect,
-            )
-        }
-        Spacer(Modifier.height(18.dp))
-        Text(subtitle, color = TextSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(
-            title, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
     }
 }
