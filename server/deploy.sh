@@ -52,7 +52,8 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now jatvpn
+systemctl enable jatvpn
+systemctl restart jatvpn
 # open the port if ufw is active
 command -v ufw >/dev/null && ufw allow "$PORT"/tcp || true
 sleep 2

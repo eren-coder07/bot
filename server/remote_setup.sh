@@ -38,7 +38,8 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now jatvpn
+systemctl enable jatvpn
+systemctl restart jatvpn
 command -v ufw >/dev/null && ufw allow "$PORT"/tcp >/dev/null 2>&1 || true
 sleep 3
 echo "HEALTH=$(curl -s --max-time 10 localhost:$PORT/api/v1/ping || echo FAILED)"
