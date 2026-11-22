@@ -286,11 +286,23 @@ fun ProfilesScreen(onBack: () -> Unit, onEdit: (Profile) -> Unit) {
                         }
                     }
                     if (isGroup && isSel && entry.size > 1) {
-                        VariantPicker(
-                            variants = entry, selectedId = selectedId, enabled = !locked,
-                            onSelect = { Graph.profiles.select(it.id) },
-                            modifier = Modifier.padding(top = 6.dp, start = 24.dp),
+                        var pick by remember { mutableStateOf(false) }
+                        SelectorField(
+                            label = "", title = p.name, subtitle = p.mode.shortDescription() + " · " + p.sshHost,
+                            leading = { ConfigIcon(34) }, enabled = !locked, onClick = { pick = true },
+                            modifier = Modifier.padding(top = 2.dp, start = 24.dp),
                         )
+                        if (pick) {
+                            PickerDialog(
+                                title = p.group,
+                                tabs = listOf("Configs" to entry.map { v ->
+                                    PickerItem(v.id, v.name, v.mode.shortDescription() + " · " + v.sshHost) { ConfigIcon(40) }
+                                }),
+                                selectedId = selectedId, searchable = true,
+                                onPick = { Graph.profiles.select(it); pick = false },
+                                onDismiss = { pick = false },
+                            )
+                        }
                     }
                 }
             }

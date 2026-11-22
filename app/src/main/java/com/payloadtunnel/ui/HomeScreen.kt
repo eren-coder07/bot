@@ -124,6 +124,25 @@ fun HomeScreen(
             onClick = { if (active) onDisconnect() else selected?.let(onConnect) },
         )
 
+        // Server + config pickers (tap to choose, like a dropdown)
+        val entries = remember(profiles) { Graph.profiles.entries(profiles) }
+        ServerAndConfigSelectors(
+            profiles = profiles,
+            entries = entries,
+            selected = selected,
+            enabled = !active,
+            onSelectEntry = { Graph.profiles.selectEntry(it) },
+            onSelectProfile = { Graph.profiles.select(it) },
+            modifier = Modifier.padding(horizontal = 16.dp),
+            serverTrailing = {
+                Text(
+                    "↑ ${formatBytes(traffic.up)}  ↓ ${formatBytes(traffic.down)}",
+                    color = TextSecondary, fontSize = 12.sp,
+                )
+            },
+        )
+
+        Spacer(Modifier.height(14.dp))
         // Live traffic
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -131,45 +150,6 @@ fun HomeScreen(
         ) {
             MiniStat(Icons.Filled.ArrowDownward, "Download", if (active) formatSpeed(traffic.downSpeed) else "0 B/s", formatBytes(traffic.down), Modifier.weight(1f))
             MiniStat(Icons.Filled.ArrowUpward, "Upload", if (active) formatSpeed(traffic.upSpeed) else "0 B/s", formatBytes(traffic.up), Modifier.weight(1f))
-        }
-
-        // Variant dropdown for grouped servers (e.g. "Free Vip")
-        val entries = remember(profiles) { Graph.profiles.entries(profiles) }
-        val selectedEntry = entries.firstOrNull { e -> e.any { it.id == selected?.id } }
-        if (selectedEntry != null && selectedEntry.first().group.isNotBlank()) {
-            Spacer(Modifier.height(12.dp))
-            VariantPicker(
-                variants = selectedEntry,
-                selectedId = selected?.id,
-                enabled = !active,
-                onSelect = { Graph.profiles.select(it.id) },
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-        // Server cards: one per group or ungrouped server
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            items(entries, key = { it.first().group.ifBlank { it.first().id } }) { entry ->
-                val isSel = entry === selectedEntry
-                val shown = if (isSel) selected!! else entry.first()
-                ServerCard(
-                    title = entry.first().group.ifBlank { shown.name },
-                    subtitle = if (entry.size > 1) "${entry.size} configs · ${if (isSel) shown.name else "tap to choose"}" else shown.mode.label,
-                    isSelected = isSel,
-                    isActive = active && isSel,
-                    locked = active,
-                    onSelect = { Graph.profiles.selectEntry(entry) },
-                    onConnect = {
-                        Graph.profiles.selectEntry(entry)
-                        Graph.profiles.selected()?.let(onConnect)
-                    },
-                )
-            }
         }
         Spacer(Modifier.height(16.dp))
     }
@@ -198,7 +178,7 @@ private fun PowerButton(status: Status, onClick: () -> Unit) {
     val pulse by transition.animateFloat(0.85f, 1f, infiniteRepeatable(tween(1400), RepeatMode.Reverse), label = "pulse")
     val glow by animateFloatAsState(if (connected) 1f else if (busy) 0.6f else 0.25f, tween(600), label = "glow")
 
-    Box(Modifier.size(300.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(250.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val c = Offset(size.width / 2, size.height / 2)
             val rOuter = size.minDimension / 2
@@ -233,7 +213,7 @@ private fun PowerButton(status: Status, onClick: () -> Unit) {
         val fill = if (connected) Lime else if (busy) Lime.copy(alpha = 0.75f) else Color(0xFF263019)
         val fg = if (connected || busy) OnLime else Lime
         Box(
-            Modifier.size(156.dp).clip(CircleShape)
+            Modifier.size(140.dp).clip(CircleShape)
                 .background(
                     if (connected || busy) Brush.radialGradient(listOf(Color(0xFFE6FF6B), fill))
                     else Brush.radialGradient(listOf(Color(0xFF34421F), fill)),

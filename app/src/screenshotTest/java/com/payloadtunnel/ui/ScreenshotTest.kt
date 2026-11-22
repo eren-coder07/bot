@@ -3,6 +3,8 @@ package com.payloadtunnel.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.test.core.app.ApplicationProvider
@@ -70,6 +72,35 @@ class ScreenshotTest {
     @Test fun servers() {
         setup(true)
         shot("4_servers") { ProfilesScreen({}, {}) }
+    }
+
+    @Test fun config_picker() {
+        setup(false)
+        val all = Graph.profiles.profiles.value
+        val group = all.filter { it.group.isNotBlank() }
+        fun item(p: Profile) = PickerItem(p.id, p.name, p.mode.shortDescription() + " · " + p.sshHost) { ConfigIcon(40) }
+        shot("7_config_picker") {
+            Box(Modifier.padding(horizontal = 20.dp, vertical = 40.dp)) {
+                PickerContent("Free Vip", listOf("Recommended" to group.map(::item), "All configs" to all.map(::item)), "freevip-iam6-ip10", true, {})
+            }
+        }
+    }
+
+    @Test fun server_picker() {
+        setup(false)
+        val entries = Graph.profiles.entries()
+        shot("8_server_picker") {
+            Box(Modifier.padding(horizontal = 20.dp, vertical = 40.dp)) {
+                PickerContent(
+                    "Choose server",
+                    listOf("Servers" to entries.map { e ->
+                        val n = e.first().group.ifBlank { e.first().name }
+                        PickerItem(e.first().group.ifBlank { e.first().id }, n, if (e.size > 1) "${e.size} configs" else e.first().mode.shortDescription()) { ProfileAvatar(n, 40.dp) }
+                    }),
+                    "Free Vip", false, {},
+                )
+            }
+        }
     }
 
     @Test fun settings() {

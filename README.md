@@ -24,9 +24,9 @@ file and allow "Install unknown apps" when Android asks.
 5. **Logs** shows every step with timestamps (proxy connect, payload sent, server response
    codes, SSH auth, SOCKS start, VPN up). Use the copy button to share a log.
 
-The app ships with one server, **Free Vip**, which bundles several configs. Pick it, then
-choose the config in the dropdown under the traffic cards (or under the server on the Servers
-screen): WIN\*6 1, WIN\*6 2, IAM\*6 IP 10, IAM\*6 IP 100, IAM\*6 SSH, IAM\*6 SSL (SSH over TLS)
+The app ships with one server, **Free Vip**, which bundles several configs. On the VPN screen
+tap **Server** to choose a server, then **Config** to choose one of its configs (searchable,
+with *Recommended* = this server's configs and *All configs* tabs): WIN\*6 1, WIN\*6 2, IAM\*6 IP 10, IAM\*6 IP 100, IAM\*6 SSH, IAM\*6 SSL (SSH over TLS)
 and IAM\*6 VLESS (VLESS over WebSocket + TLS). Every config can be edited. To make your own
 group, give several servers the same **Group** name in the editor.
 
