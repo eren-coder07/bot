@@ -46,7 +46,7 @@ A default profile **rifi tech win\*6** is created on first launch. You can edit 
 |---|---|
 | `[crlf]` `[lf]` `[cr]` `[lfcr]` | `\r\n`, `\n`, `\r`, `\n\r` |
 | `[host]` `[port]` `[host_port]` / `[ssh]` | SSH host, SSH port, `host:port` |
-| `[ua]` | The phone's browser User-Agent |
+| `[ua]` | A default mobile Chrome User-Agent |
 | `[protocol]` | `HTTP/1.1` |
 | `[split]` | Sends the text before it as a separate write, then waits 300 ms |
 | `[delay_split]` / `[instant_split]` | Same, with a 1 s delay / no delay |

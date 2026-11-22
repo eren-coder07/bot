@@ -11,7 +11,6 @@ import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import android.webkit.WebSettings
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.payloadtunnel.App
@@ -373,11 +372,7 @@ class TunnelVpnService : VpnService() {
 
     // ───────────────────────── helpers ─────────────────────────
 
-    private fun userAgent(): String = try {
-        WebSettings.getDefaultUserAgent(this)
-    } catch (e: Throwable) {
-        Payload.DEFAULT_UA
-    }
+    private fun userAgent(): String = Payload.DEFAULT_UA
 
     private fun buildNotification(text: String): Notification {
         val open = PendingIntent.getActivity(
