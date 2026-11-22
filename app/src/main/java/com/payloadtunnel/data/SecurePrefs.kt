@@ -17,7 +17,13 @@ object SecurePrefs {
             // Happens on some devices after a backup restore or keystore reset.
             Log.w("SecurePrefs", "Encrypted prefs unreadable, recreating", e)
             context.deleteSharedPreferences(FILE)
-            open(context)
+            try {
+                open(context)
+            } catch (e2: Exception) {
+                // Keystore is unusable on this device: keep the app working rather than crash.
+                Log.e("SecurePrefs", "Android keystore unavailable, passwords stored unencrypted", e2)
+                context.getSharedPreferences(FILE + "_fallback", Context.MODE_PRIVATE)
+            }
         }
     }
 
