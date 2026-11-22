@@ -73,6 +73,10 @@ android {
         }
     }
 
+    if (project.hasProperty("screenshots")) {
+        sourceSets["test"].java.srcDir("src/screenshotTest/java")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -127,9 +131,13 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
-    testImplementation("org.robolectric:robolectric:4.13")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.20.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.20.0")
-    testImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // Screenshot rendering tools, only resolved with -Pscreenshots (not needed for the APK).
+    if (project.hasProperty("screenshots")) {
+        testImplementation("org.robolectric:robolectric:4.13")
+        testImplementation("io.github.takahirom.roborazzi:roborazzi:1.20.0")
+        testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.20.0")
+        testImplementation("androidx.compose.ui:ui-test-junit4")
+        debugImplementation("androidx.compose.ui:ui-test-manifest")
+    }
 }
