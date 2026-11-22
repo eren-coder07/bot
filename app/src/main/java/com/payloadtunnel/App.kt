@@ -48,8 +48,13 @@ object Graph {
         val id = session.deviceId
         return try {
             session.applyAuth(api.register(id))
-            runCatching { configs.refresh(api, id) }
-            null
+            try {
+                configs.refresh(api, id)
+                null
+            } catch (e: Exception) {
+                if (configs.configs.value.isNotEmpty()) null // already have cached servers
+                else "Reached the server but couldn't load servers (${(e as? ApiException)?.message ?: e.message ?: "decode error"}). Check APP_SECRET matches."
+            }
         } catch (e: ApiException) {
             session.setState(if (e.code == "banned") Session.State.BANNED else Session.State.OFFLINE)
             e.message

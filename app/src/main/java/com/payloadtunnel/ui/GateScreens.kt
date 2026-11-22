@@ -86,3 +86,21 @@ fun BlockedScreen(deviceId: String) {
         }
     }
 }
+
+@Composable
+fun ErrorScreen(message: String, onRetry: () -> Unit) {
+    AppBackground {
+        Column(
+            Modifier.fillMaxSize().padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+        ) {
+            Logo(72)
+            Spacer(Modifier.height(20.dp))
+            Text("Can't reach the server", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            Text(message, color = TextSecondary, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Spacer(Modifier.height(24.dp))
+            PrimaryButton("Retry", onClick = onRetry)
+        }
+    }
+}

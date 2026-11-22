@@ -83,21 +83,26 @@ class MainActivity : ComponentActivity() {
         val configs by Graph.configs.configs.collectAsState()
         var adLoading by remember { mutableStateOf(false) }
         setAdLoading = { adLoading = it }
-
-        LaunchedEffect(Unit) {
-            if (Graph.session.hasKey()) Graph.refresh()
+        var attempt by remember { mutableStateOf(0) }
+        var loading by remember { mutableStateOf(true) }
+        var loadError by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(attempt) {
+            loading = true
+            loadError = Graph.refresh()
+            loading = false
         }
 
         when {
             sessionState == Session.State.BANNED -> BlockedScreen(Graph.session.deviceId)
-            configs.isEmpty() -> LoadingScreen()
-            else -> MainScaffold(
+            configs.isNotEmpty() -> MainScaffold(
                 onConnect = ::connect,
                 onDisconnect = { TunnelVpnService.disconnect(this) },
                 onRefresh = { done -> scope.launch { done(Graph.refresh()) } },
                 onWatchAd = { watchAd() },
                 adLoading = adLoading,
             )
+            loading -> LoadingScreen()
+            else -> ErrorScreen(loadError ?: "Can't reach the server.") { attempt++ }
         }
     }
 
